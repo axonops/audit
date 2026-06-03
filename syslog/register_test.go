@@ -146,7 +146,7 @@ func TestSyslogFactory_EmptyConfig_ReturnsError(t *testing.T) {
 }
 
 func TestSyslogFactory_WithTLSPolicy(t *testing.T) {
-	yaml := []byte("network: tcp+tls\naddress: localhost:6514\ntls_policy:\n  allow_tls12: true\n")
+	yaml := []byte("network: tcp+tls\naddress: localhost:6514\ntls:\n  allow_tls12: true\n")
 
 	factory := audit.LookupOutputFactory("syslog")
 	require.NotNil(t, factory)
@@ -156,6 +156,55 @@ func TestSyslogFactory_WithTLSPolicy(t *testing.T) {
 	if err != nil {
 		// text-only: register.go wraps the dial error from syslog.go — no audit sentinel in the chain.
 		assert.Contains(t, err.Error(), "tls_syslog")
+	}
+}
+
+// TestRegister_TLS_NestedSchema_Syslog locks the #894 contract: cert
+// material + policy flags live together inside the nested `tls:`
+// block on the syslog output. SSRF flags (allow_insecure_http,
+// allow_private_ranges) are deliberately absent — syslog speaks
+// TCP+TLS, not HTTP.
+func TestRegister_TLS_NestedSchema_Syslog(t *testing.T) {
+	yaml := []byte(`network: tcp+tls
+address: localhost:6514
+tls:
+  ca: /etc/audit/ca.pem
+  cert: /etc/audit/client.pem
+  key: /etc/audit/client-key.pem
+  allow_tls12: true
+  allow_weak_ciphers: false
+`)
+	factory := audit.LookupOutputFactory("syslog")
+	require.NotNil(t, factory)
+	// Will fail to dial without Docker; YAML parse must succeed.
+	_, err := factory("tls_nested", yaml, audit.FrameworkContext{})
+	if err != nil {
+		// Dial errors mention the output name; YAML parse errors mention
+		// the field. Either is acceptable for this nesting test — the
+		// goal is to prove the decoder accepted the nested shape.
+		assert.NotContains(t, err.Error(), "unknown field",
+			"nested tls: block must parse cleanly: %v", err)
+	}
+}
+
+// TestRegister_TLS_RejectsLegacyFlatKeys_Syslog locks the #894
+// migration: every legacy flat key must be rejected by the strict
+// YAML decoder. Syslog only supports tls_ca/tls_cert/tls_key/
+// tls_policy at the legacy surface; SSRF flags were never on syslog.
+func TestRegister_TLS_RejectsLegacyFlatKeys_Syslog(t *testing.T) {
+	t.Parallel()
+	for _, key := range []string{"tls_ca", "tls_cert", "tls_key", "tls_policy"} {
+		t.Run(key, func(t *testing.T) {
+			t.Parallel()
+			rawYAML := []byte("network: tcp+tls\naddress: localhost:6514\n" +
+				key + ": /etc/audit/some.pem\n")
+			factory := audit.LookupOutputFactory("syslog")
+			require.NotNil(t, factory)
+			_, err := factory("legacy_tls_"+key, rawYAML, audit.FrameworkContext{})
+			require.Error(t, err)
+			require.Contains(t, err.Error(), key,
+				"strict decode should name the legacy key %q: %q", key, err.Error())
+		})
 	}
 }
 

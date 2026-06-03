@@ -226,7 +226,7 @@ func TestWebhookFactory_WithHeaders(t *testing.T) {
 }
 
 func TestWebhookFactory_WithTLSPolicy(t *testing.T) {
-	yaml := []byte("url: https://example.com/events\ntls_policy:\n  allow_tls12: true\n")
+	yaml := []byte("url: https://example.com/events\ntls:\n  allow_tls12: true\n")
 
 	factory := audit.LookupOutputFactory("webhook")
 	require.NotNil(t, factory)
@@ -234,6 +234,45 @@ func TestWebhookFactory_WithTLSPolicy(t *testing.T) {
 	out, err := factory("tls_webhook", yaml, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
+}
+
+// TestRegister_TLS_NestedSchema_Webhook locks the #894 contract:
+// cert material + policy flags live together inside the nested
+// `tls:` block on the webhook output. Webhook's Validate() stats
+// cert paths, so the test omits them and exercises the policy-only
+// nesting (verify_on_startup omitted to avoid construction-time
+// dial).
+func TestRegister_TLS_NestedSchema_Webhook(t *testing.T) {
+	yaml := []byte(`url: https://example.com/events
+tls:
+  allow_tls12: true
+  allow_weak_ciphers: false
+verify_on_startup: false
+`)
+	factory := audit.LookupOutputFactory("webhook")
+	require.NotNil(t, factory)
+	out, err := factory("tls_nested", yaml, audit.FrameworkContext{})
+	require.NoError(t, err, "nested tls: block must parse cleanly: %v", err)
+	t.Cleanup(func() { _ = out.Close() })
+}
+
+// TestRegister_TLS_RejectsLegacyFlatKeys_Webhook locks the #894
+// migration: every legacy flat key (tls_ca / tls_cert / tls_key /
+// tls_policy) must be rejected by the strict YAML decoder.
+func TestRegister_TLS_RejectsLegacyFlatKeys_Webhook(t *testing.T) {
+	t.Parallel()
+	for _, key := range []string{"tls_ca", "tls_cert", "tls_key", "tls_policy"} {
+		t.Run(key, func(t *testing.T) {
+			t.Parallel()
+			rawYAML := []byte("url: https://example.com/events\n" + key + ": /etc/audit/some.pem\n")
+			factory := audit.LookupOutputFactory("webhook")
+			require.NotNil(t, factory)
+			_, err := factory("legacy_tls_"+key, rawYAML, audit.FrameworkContext{})
+			require.Error(t, err)
+			require.Contains(t, err.Error(), key,
+				"strict decode should name the legacy key %q: %q", key, err.Error())
+		})
+	}
 }
 
 func TestWebhookFactory_DurationParsing(t *testing.T) {

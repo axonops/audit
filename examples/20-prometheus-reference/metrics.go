@@ -41,9 +41,9 @@ import (
 type auditMetrics struct {
 	audit.NoOpMetrics
 
-	delivery, outputErr, outputFilt *prometheus.CounterVec
-	valErr, filt, serErr            *prometheus.CounterVec
-	bufferDrops                     prometheus.Counter
+	outputErr, outputFilt *prometheus.CounterVec
+	valErr, filt, serErr  *prometheus.CounterVec
+	bufferDrops           prometheus.Counter
 }
 
 // Compile-time check: auditMetrics MUST satisfy audit.Metrics. If a
@@ -60,7 +60,6 @@ func vec(name, help string, labels ...string) *prometheus.CounterVec {
 // counter on the default registry. Call once at startup.
 func newMetrics() *auditMetrics {
 	return &auditMetrics{
-		delivery:   vec("audit_events_total", "Audit deliveries by output and status.", "output", "status"),
 		outputErr:  vec("audit_output_errors_total", "Output write errors by output name.", "output"),
 		outputFilt: vec("audit_output_filtered_total", "Events filtered per output.", "output"),
 		valErr:     vec("audit_validation_errors_total", "Validation errors by event type.", "event_type"),
@@ -73,13 +72,10 @@ func newMetrics() *auditMetrics {
 	}
 }
 
-// audit.Metrics — the seven methods this adapter instruments.
+// audit.Metrics — the six methods this adapter instruments.
 // RecordSubmitted and RecordQueueDepth remain inherited no-ops from
 // audit.NoOpMetrics; wire them up if you want submission and queue-
 // depth telemetry on your dashboard.
-func (m *auditMetrics) RecordDelivery(output string, status audit.EventStatus) {
-	m.delivery.WithLabelValues(output, string(status)).Inc()
-}
 func (m *auditMetrics) RecordOutputError(output string) {
 	m.outputErr.WithLabelValues(output).Inc()
 }
@@ -114,7 +110,7 @@ type perOutputMetrics struct {
 	errors     prometheus.Counter
 }
 
-func (p *perOutputMetrics) RecordDrop() { p.drops.Inc() }
+func (p *perOutputMetrics) RecordDrop(count int) { p.drops.Add(float64(count)) }
 func (p *perOutputMetrics) RecordFlush(batchSize int, dur time.Duration) {
 	p.flushBatch.Observe(float64(batchSize))
 	p.flushDur.Observe(dur.Seconds())
@@ -122,7 +118,7 @@ func (p *perOutputMetrics) RecordFlush(batchSize int, dur time.Duration) {
 func (p *perOutputMetrics) RecordRetry(attempt int) {
 	p.retries.WithLabelValues(strconv.Itoa(attempt)).Inc()
 }
-func (p *perOutputMetrics) RecordError() { p.errors.Inc() }
+func (p *perOutputMetrics) RecordError(count int) { p.errors.Add(float64(count)) }
 
 // newOutputMetricsFactory returns an OutputMetricsFactory wiring
 // per-output metrics. Pass the result to

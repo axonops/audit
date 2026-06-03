@@ -42,7 +42,6 @@ const dropWarnInterval = 10 * time.Second
 var (
 	_ audit.Output           = (*Output)(nil)
 	_ audit.MetadataWriter   = (*Output)(nil)
-	_ audit.DeliveryReporter = (*Output)(nil)
 	_ audit.DestinationKeyer = (*Output)(nil)
 )
 
@@ -96,7 +95,7 @@ type frameworkFields struct { //nolint:govet // fieldalignment: readability pref
 
 // Output pushes audit events to a Grafana Loki instance via the HTTP
 // Push API. It implements [audit.Output], [audit.MetadataWriter],
-// [audit.DeliveryReporter], and [audit.DestinationKeyer].
+// and [audit.DestinationKeyer].
 //
 // Events are buffered and flushed in batches based on count, byte
 // size, or time interval — whichever threshold is reached first.
@@ -161,8 +160,9 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 // Optional [Option] arguments tune construction-time behaviour:
 //   - [WithDiagnosticLogger] routes TLS-policy and runtime warnings
 //   - [WithOutputMetrics] supplies the per-output counters sink
-//   - [WithCoreMetrics] supplies the auditor-wide [audit.Metrics] sink
-//     (the background goroutine calls RecordDelivery after each push)
+//   - [WithCoreMetrics] supplies the auditor-wide [audit.Metrics]
+//     sink (pipeline-wide RecordOutputError + other counters; per-
+//     event delivery counts flow through OutputMetrics.RecordFlush)
 //   - [WithFrameworkContext] seeds the auditor-wide framework metadata
 //     used as Loki stream labels
 func New(cfg *Config, opts ...Option) (*Output, error) {
@@ -284,12 +284,11 @@ func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error 
 				"dropped", dropped)
 		})
 		// Buffer drops (event never attempted) are counted via per-
-		// output OutputMetrics.RecordDrop only — not via pipeline-
-		// level Metrics.RecordDelivery. Matches file + syslog for
-		// consistency across all self-reporting outputs (B-25).
-		// RecordDelivery(EventError) remains for retries-exhausted
-		// failures in http.go where delivery WAS attempted.
-		o.outputMetrics.RecordDrop()
+		// output OutputMetrics.RecordDrop. Since #894 removed
+		// Metrics.RecordDelivery, drops are reported only on this
+		// surface; retry-exhausted batches that DID attempt delivery
+		// call recordError(len(batch)) in http.go.
+		o.outputMetrics.RecordDrop(1)
 		return fmt.Errorf("%w: %w: event size %d exceeds max_event_bytes %d",
 			audit.ErrValidation, audit.ErrEventTooLarge, len(data), o.maxEventBytes)
 	}
@@ -308,7 +307,7 @@ func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error 
 		})
 		// Buffer drops counted via OutputMetrics.RecordDrop only — see
 		// B-25 note above.
-		o.outputMetrics.RecordDrop()
+		o.outputMetrics.RecordDrop(1)
 		return nil // non-blocking — do not return error to drain goroutine
 	}
 }
@@ -356,11 +355,6 @@ func (o *Output) Close() error {
 	o.client.CloseIdleConnections()
 	return nil
 }
-
-// ReportsDelivery returns true, indicating that Output reports
-// its own delivery metrics from the batch goroutine after actual HTTP
-// delivery, not from the Write enqueue path.
-func (o *Output) ReportsDelivery() bool { return true }
 
 // LastDeliveryNanos returns the wall-clock UnixNano of the most recent
 // HTTP 2xx push response, or 0 if no batch has yet been delivered.

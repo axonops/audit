@@ -70,9 +70,11 @@ func WithOutputMetrics(m audit.OutputMetrics) Option {
 }
 
 // WithCoreMetrics sets the auditor-wide [audit.Metrics] sink for this
-// output. The Loki output calls [audit.Metrics.RecordDelivery] from
-// its background goroutine after each successful push. When omitted
-// or nil, the RecordDelivery call is skipped (no-op, no allocation).
+// output. The Loki output forwards pipeline-wide error signals
+// (RecordOutputError, etc.) through this sink. Per-event delivery
+// counts come from [audit.OutputMetrics.RecordFlush] / RecordError
+// supplied via [WithOutputMetrics]. When omitted or nil, the core
+// Metrics calls are no-ops.
 //
 // Distinct from [WithOutputMetrics]: WithCoreMetrics carries the
 // pipeline-level interface (every output shares the same value);

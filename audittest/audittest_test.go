@@ -64,7 +64,7 @@ func TestNew(t *testing.T) {
 
 	require.Equal(t, 1, events.Count())
 	assert.Equal(t, "user_create", events.Events()[0].EventType)
-	assert.Equal(t, 1, metrics.EventDeliveries("recorder", "success"))
+	assert.Equal(t, 1, metrics.SubmittedCount())
 }
 
 func TestNewQuick(t *testing.T) {

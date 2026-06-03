@@ -123,23 +123,8 @@ func (m *mockMetadataOutput) getCalls() []metadataCall {
 	return cp
 }
 
-// mockMetadataDeliveryOutput implements audit.Output, audit.MetadataWriter,
-// and audit.DeliveryReporter — used by test 8 to verify metrics are skipped.
-type mockMetadataDeliveryOutput struct {
-	mockMetadataOutput
-}
-
-var _ audit.Output = (*mockMetadataDeliveryOutput)(nil)
-var _ audit.MetadataWriter = (*mockMetadataDeliveryOutput)(nil)
-var _ audit.DeliveryReporter = (*mockMetadataDeliveryOutput)(nil)
-
-func newMockMetadataDeliveryOutput(name string) *mockMetadataDeliveryOutput {
-	return &mockMetadataDeliveryOutput{
-		mockMetadataOutput: mockMetadataOutput{name: name},
-	}
-}
-
-func (m *mockMetadataDeliveryOutput) ReportsDelivery() bool { return true }
+// Note: mockMetadataDeliveryOutput + TestMetadataWriter_DeliveryReporter_SkipsMetrics
+// removed in #894 alongside the audit.DeliveryReporter interface itself.
 
 // TestMetadataWriter_ImplementingOutput_ReceivesMetadata verifies that when an
 // output implements MetadataWriter, the library calls WriteWithMetadata instead
@@ -347,8 +332,9 @@ func TestMetadataWriter_UncategorisedEvent_EmptyCategory(t *testing.T) {
 }
 
 // TestMetadataWriter_MetricsPreserved verifies that when WriteWithMetadata
-// succeeds, the core auditor records RecordDelivery(name, "success"). This mirrors
-// the same metrics contract that Write has.
+// succeeds, the core auditor leaves RecordOutputError untouched. Per-output
+// delivery counts come from OutputMetrics.RecordFlush; the pipeline-wide
+// Metrics surface no longer carries a per-event delivery counter (#894).
 func TestMetadataWriter_MetricsPreserved(t *testing.T) {
 	t.Parallel()
 
@@ -372,19 +358,14 @@ func TestMetadataWriter_MetricsPreserved(t *testing.T) {
 
 	require.NoError(t, auditor.Close())
 
-	assert.Greater(t, metrics.GetEventCount("mw-metrics", audit.EventSuccess), 0,
-		"RecordDelivery(name, \"success\") must be called after a successful WriteWithMetadata")
-	assert.Equal(t, 0, metrics.GetEventCount("mw-metrics", audit.EventError),
-		"RecordDelivery(name, \"error\") must not be called on success")
 	assert.Equal(t, 0, metrics.GetOutputErrorCount("mw-metrics"),
-		"RecordOutputError must not be called on success")
+		"RecordOutputError must not be called on a successful WriteWithMetadata")
 }
 
-// TestMetadataWriter_WriteError_RecordsMetrics verifies that when
-// WriteWithMetadata returns an error, the core auditor calls both
-// RecordOutputError and RecordDelivery(name, "error"), and does NOT call
-// RecordDelivery(name, "success").
-func TestMetadataWriter_WriteError_RecordsMetrics(t *testing.T) {
+// TestMetadataWriter_WriteError_RecordsOutputError verifies that when
+// WriteWithMetadata returns an error, the core auditor calls
+// RecordOutputError on the pipeline-wide Metrics surface.
+func TestMetadataWriter_WriteError_RecordsOutputError(t *testing.T) {
 	t.Parallel()
 
 	out := newMockMetadataOutput("mw-err-out")
@@ -408,53 +389,8 @@ func TestMetadataWriter_WriteError_RecordsMetrics(t *testing.T) {
 
 	require.NoError(t, auditor.Close())
 
-	assert.Greater(t, metrics.GetEventCount("mw-err-out", audit.EventError), 0,
-		"RecordDelivery(name, \"error\") must be called when WriteWithMetadata returns an error")
 	assert.Greater(t, metrics.GetOutputErrorCount("mw-err-out"), 0,
 		"RecordOutputError must be called when WriteWithMetadata returns an error")
-	assert.Equal(t, 0, metrics.GetEventCount("mw-err-out", audit.EventSuccess),
-		"RecordDelivery(name, \"success\") must not be called when WriteWithMetadata returns an error")
-}
-
-// TestMetadataWriter_DeliveryReporter_SkipsMetrics verifies that when an
-// output implements all three interfaces (Output, MetadataWriter, and
-// DeliveryReporter), the core auditor skips its own RecordDelivery and
-// RecordOutputError calls — regardless of whether WriteWithMetadata
-// succeeds or fails.
-func TestMetadataWriter_DeliveryReporter_SkipsMetrics(t *testing.T) {
-	t.Parallel()
-
-	out := newMockMetadataDeliveryOutput("mw-dr")
-	metrics := testhelper.NewMockMetrics()
-
-	auditor, err := audit.New(
-		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithAppName("test-app"),
-		audit.WithHost("test-host"),
-		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{})),
-		audit.WithMetrics(metrics),
-	)
-	require.NoError(t, err)
-
-	err = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
-		"outcome":  "failure",
-		"actor_id": "bob",
-	}))
-	require.NoError(t, err)
-
-	require.NoError(t, auditor.Close())
-
-	// The event must have been delivered via WriteWithMetadata.
-	assert.True(t, out.getWriteWithMetadataCalled(),
-		"WriteWithMetadata must be called for an output that also implements DeliveryReporter")
-
-	// The core auditor must not have called any metrics for this output.
-	assert.Equal(t, 0, metrics.GetEventCount("mw-dr", audit.EventSuccess),
-		"core auditor must not call RecordDelivery(success) for a MetadataWriter+DeliveryReporter output")
-	assert.Equal(t, 0, metrics.GetEventCount("mw-dr", audit.EventError),
-		"core auditor must not call RecordDelivery(error) for a MetadataWriter+DeliveryReporter output")
-	assert.Equal(t, 0, metrics.GetOutputErrorCount("mw-dr"),
-		"core auditor must not call RecordOutputError for a MetadataWriter+DeliveryReporter output")
 }
 
 // TestMetadataWriter_WithHMAC_ReceivesHMACData verifies that when HMAC is

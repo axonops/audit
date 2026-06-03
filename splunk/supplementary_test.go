@@ -17,14 +17,12 @@ package splunk_test
 import (
 	"net/http"
 	"net/http/httptest"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/axonops/audit"
 	"github.com/axonops/audit/splunk"
 )
 
@@ -33,75 +31,13 @@ import (
 // (0%), WithMaxIdleConns (0%), and the audit.Metrics non-nil
 // branches of recordSuccess (60%) / recordDrop (75%).
 
-// fakeCoreMetrics implements audit.Metrics with simple counters so
-// the splunk Output's recordSuccess / recordDrop inner-loop paths are
-// exercised (the inner loops only run when o.metrics != nil; see
-// splunk.go:556 / :567). Embeds audit.NoOpMetrics for forward-compat.
-type fakeCoreMetrics struct {
-	audit.NoOpMetrics
-	deliveries atomic.Int64
-	successes  atomic.Int64
-	errors     atomic.Int64
-}
-
-func (m *fakeCoreMetrics) RecordDelivery(_ string, status audit.EventStatus) {
-	m.deliveries.Add(1)
-	switch status {
-	case audit.EventSuccess:
-		m.successes.Add(1)
-	case audit.EventError:
-		m.errors.Add(1)
-	}
-}
-
-// TestOutput_RecordSuccess_CallsCoreMetricsRecordDelivery covers the
-// `o.metrics != nil` branch of recordSuccess. With a real Metrics
-// implementation we observe one delivery per event in the batch.
-func TestOutput_RecordSuccess_CallsCoreMetricsRecordDelivery(t *testing.T) {
-	srv, _ := newStub(t)
-	cm := &fakeCoreMetrics{}
-	cfg := validCfg(srv.URL)
-	out, err := splunk.New(cfg, splunk.WithCoreMetrics(cm))
-	require.NoError(t, err)
-
-	require.NoError(t, out.Write([]byte(`{"event_type":"a"}`)))
-	require.NoError(t, out.Write([]byte(`{"event_type":"b"}`)))
-	require.NoError(t, out.Close())
-
-	assert.GreaterOrEqual(t, cm.successes.Load(), int64(2),
-		"audit.Metrics.RecordDelivery(success) must fire per event delivered")
-	assert.Zero(t, cm.errors.Load(), "no error deliveries expected on success path")
-}
-
-// TestOutput_RecordDrop_CallsCoreMetricsRecordDelivery covers the
-// `o.metrics != nil` branch of recordDrop. We force every batch to
-// drop by configuring MaxRetries=0 with a 5xx server.
-func TestOutput_RecordDrop_CallsCoreMetricsRecordDelivery(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/services/collector/health" {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"text":"HEC is healthy","code":17}`))
-			return
-		}
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(`{"text":"oh no","code":8}`))
-	}))
-	defer srv.Close()
-
-	cm := &fakeCoreMetrics{}
-	cfg := validCfg(srv.URL)
-	cfg.MaxRetries = 0
-	cfg.RetryBaseDelay = 5 * time.Millisecond
-	cfg.RetryMaxDelay = 10 * time.Millisecond
-	out, err := splunk.New(cfg, splunk.WithCoreMetrics(cm))
-	require.NoError(t, err)
-
-	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
-	require.NoError(t, out.Close())
-
-	assert.GreaterOrEqual(t, cm.errors.Load(), int64(1),
-		"audit.Metrics.RecordDelivery(error) must fire per event dropped")
-}
+// Note (#894): fakeCoreMetrics + TestOutput_RecordSuccess_CallsCoreMetricsRecordDelivery
+// + TestOutput_RecordDrop_CallsCoreMetricsRecordDelivery removed when
+// audit.Metrics.RecordDelivery / EventStatus were deleted. Per-event
+// delivery counts now flow through OutputMetrics.RecordFlush (sum of
+// batchSize) and OutputMetrics.RecordError (event count); the splunk
+// recordSuccess / recordDrop paths are exercised end-to-end by the
+// splunk_test.go RecordingMetrics-based tests.
 
 // TestOutput_BufferFull_RecordsDropMetric covers recordBufferFull
 // (0% before this test). Pattern: a slow server backs up flushes

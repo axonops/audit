@@ -158,7 +158,7 @@ func TestRecorder_FullPipeline(t *testing.T) {
 	assert.Equal(t, "alice", evt.Field("actor_id"))
 	assert.True(t, evt.HasField("outcome", "success"))
 
-	assert.Equal(t, 1, metrics.EventDeliveries("recorder", "success"))
+	assert.Equal(t, 1, metrics.SubmittedCount())
 }
 
 // ---------------------------------------------------------------------------

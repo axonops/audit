@@ -97,8 +97,8 @@ Feature: Loki Output Configuration Validation
   # --- TLS validation ---
 
   Scenario: TLS cert without key rejected
-    When I try to create a loki output with tls_cert but no tls_key
-    Then the loki construction should fail with an error containing "tls_cert and tls_key must both be set"
+    When I try to create a loki output with tls.cert but no tls.key
+    Then the loki construction should fail with an error containing "tls.cert and tls.key must both be set"
 
   # --- Config.String() credential redaction ---
 

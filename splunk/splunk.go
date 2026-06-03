@@ -52,14 +52,8 @@ func libraryVersion() string {
 // Compile-time interface assertions.
 var (
 	_ audit.Output               = (*Output)(nil)
-	_ audit.DeliveryReporter     = (*Output)(nil)
 	_ audit.LastDeliveryReporter = (*Output)(nil)
 )
-
-// ReportsDelivery implements [audit.DeliveryReporter] — splunk reports
-// its own per-event delivery via [audit.Metrics.RecordDelivery] so the
-// core pipeline must NOT double-record. Mirrors loki/webhook.
-func (o *Output) ReportsDelivery() bool { return true }
 
 // dropWarnInterval is the minimum interval between slog.Warn calls
 // for buffer-full drop events. Mirrors loki/loki.go:39.
@@ -86,8 +80,8 @@ type splunkEntry struct {
 }
 
 // Output pushes audit events to a Splunk HEC endpoint. Implements
-// [audit.Output] and [audit.DeliveryReporter].
-type Output struct { //nolint:govet,gocritic // fieldalignment: readability preferred; typeDefFirst: methods defined below for grouping by concern
+// [audit.Output] and [audit.LastDeliveryReporter].
+type Output struct { //nolint:govet // fieldalignment: readability preferred
 	cfg           *Config
 	metrics       audit.Metrics
 	outputMetrics audit.OutputMetrics
@@ -130,8 +124,9 @@ type Output struct { //nolint:govet,gocritic // fieldalignment: readability pref
 // Optional [Option] arguments tune construction-time behaviour:
 //   - [WithDiagnosticLogger] routes TLS-policy and runtime warnings
 //   - [WithOutputMetrics] supplies the per-output counters sink
-//   - [WithCoreMetrics] supplies the auditor-wide [audit.Metrics] sink
-//     (the batch goroutine calls RecordDelivery after each POST)
+//   - [WithCoreMetrics] supplies the auditor-wide [audit.Metrics]
+//     sink (pipeline-wide RecordOutputError + other counters; per-
+//     event delivery counts flow through OutputMetrics.RecordFlush)
 //   - [WithFrameworkContext] seeds host defaulting and framework
 //     metadata
 //   - [WithMaxIdleConns] tunes the HTTP transport idle pool
@@ -351,7 +346,7 @@ func (o *Output) LastDeliveryNanos() int64 {
 // recordOversized records a per-event oversize drop (rate-limited
 // warning).
 func (o *Output) recordOversized() {
-	o.outputMetrics.RecordDrop()
+	o.outputMetrics.RecordDrop(1)
 	if o.dropsOversized.allow() {
 		o.logger.Warn("audit/splunk: event exceeds MaxEventBytes — dropping",
 			"output", o.name,
@@ -363,7 +358,7 @@ func (o *Output) recordOversized() {
 // recordBufferFull records a buffer-overflow drop (rate-limited
 // warning).
 func (o *Output) recordBufferFull() {
-	o.outputMetrics.RecordDrop()
+	o.outputMetrics.RecordDrop(1)
 	if o.dropsBufferFull.allow() {
 		o.logger.Warn("audit/splunk: buffer full — dropping event",
 			"output", o.name,
@@ -515,7 +510,7 @@ func (o *Output) flushBatchAux(ctx context.Context, batch []splunkEntry, bufs *f
 			if err != nil {
 				o.logger.Warn("audit/splunk: envelope wrap failed — dropping event",
 					"output", o.name, "error", err)
-				o.outputMetrics.RecordDrop()
+				o.outputMetrics.RecordDrop(1)
 				continue
 			}
 			if fellBack {
@@ -551,13 +546,13 @@ func (o *Output) flushBatchAux(ctx context.Context, batch []splunkEntry, bufs *f
 		if _, err := bufs.gz.Write(payload); err != nil {
 			o.logger.Warn("audit/splunk: gzip write failed — dropping batch",
 				"output", o.name, "error", err)
-			o.outputMetrics.RecordDrop()
+			o.outputMetrics.RecordDrop(len(batch))
 			return
 		}
 		if err := bufs.gz.Close(); err != nil {
 			o.logger.Warn("audit/splunk: gzip close failed — dropping batch",
 				"output", o.name, "error", err)
-			o.outputMetrics.RecordDrop()
+			o.outputMetrics.RecordDrop(len(batch))
 			return
 		}
 		payload = bufs.compress.Bytes()
@@ -638,24 +633,17 @@ func (o *Output) flushBatchAux(ctx context.Context, batch []splunkEntry, bufs *f
 }
 
 // recordSuccess records successful delivery metrics for a batch.
+// Per-event delivery counts come from summing OutputMetrics.RecordFlush
+// batchSize values; the auditor no longer carries a per-event
+// pipeline counter.
 func (o *Output) recordSuccess(batchSize int, dur time.Duration) {
 	o.lastDeliveryNanos.Store(time.Now().UnixNano())
 	o.outputMetrics.RecordFlush(batchSize, dur)
-	if o.metrics != nil {
-		for range batchSize {
-			o.metrics.RecordDelivery(o.name, audit.EventSuccess)
-		}
-	}
 }
 
 // recordDrop records dropped events in metrics.
 func (o *Output) recordDrop(count int) {
-	for range count {
-		o.outputMetrics.RecordDrop()
-		if o.metrics != nil {
-			o.metrics.RecordDelivery(o.name, audit.EventError)
-		}
-	}
+	o.outputMetrics.RecordDrop(count)
 }
 
 // redact returns the error message with the token literal stripped.

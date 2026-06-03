@@ -372,11 +372,11 @@ outputs:
         X-Custom-Header: "my-value"
 
       # --- TLS ---
-      tls_ca: "/etc/audit/ca.pem"
-      tls_cert: "/etc/audit/client.pem"   # for mTLS
-      tls_key: "/etc/audit/client-key.pem"
-      tls_policy:
-        allow_tls12: false                # TLS 1.3 only by default
+      tls:
+        ca: "/etc/audit/ca.pem"
+        cert: "/etc/audit/client.pem"   # for mTLS
+        key: "/etc/audit/client-key.pem"
+        allow_tls12: false              # TLS 1.3 only by default
         allow_weak_ciphers: false
 
       # --- Development only ---
@@ -443,13 +443,14 @@ the Loki output.
 | `timeout` | duration | `"10s"` | 1s – 5m | HTTP request timeout. |
 | `max_retries` | int | `3` | 1 – 20 | Retry attempts on 429 or 5xx responses. |
 | `buffer_size` | int | `10000` | 100 – 1,000,000 | Internal async buffer capacity. Events are dropped when full. |
-| `tls_ca` | string | — | — | CA certificate path for TLS verification. |
-| `tls_cert` | string | — | — | Client certificate path for mTLS. MUST be set together with `tls_key`. |
-| `tls_key` | string | — | — | Client key path for mTLS. MUST be set together with `tls_cert`. |
-| `tls_policy.allow_tls12` | bool | `false` | — | Allow TLS 1.2 in addition to TLS 1.3. |
-| `tls_policy.allow_weak_ciphers` | bool | `false` | — | Allow weaker cipher suites when TLS 1.2 is enabled. |
-| `allow_insecure_http` | bool | `false` | — | Allow `http://` URLs. **MUST NOT** be `true` in production. |
-| `allow_private_ranges` | bool | `false` | — | Allow private/loopback IP ranges. Disables SSRF protection. |
+| `tls` | object | — | — | TLS configuration block. Groups cert material and policy flags. |
+| `tls.ca` | string | — | — | CA certificate path for TLS verification. |
+| `tls.cert` | string | — | — | Client certificate path for mTLS. MUST be set together with `tls.key`. |
+| `tls.key` | string | — | — | Client key path for mTLS. MUST be set together with `tls.cert`. |
+| `tls.allow_tls12` | bool | `false` | — | Allow TLS 1.2 in addition to TLS 1.3. |
+| `tls.allow_weak_ciphers` | bool | `false` | — | Allow weaker cipher suites when TLS 1.2 is enabled. |
+| `allow_insecure_http` | bool | `false` | — | Allow `http://` URLs. **MUST NOT** be `true` in production. Top-level — not TLS. |
+| `allow_private_ranges` | bool | `false` | — | Allow private/loopback IP ranges. Disables SSRF protection. Top-level — not TLS. |
 | `verify_on_startup` | bool | `true` | `true` or `false` | When `true` (default), `New()` performs a TCP dial — and, for `https://` URLs, a TLS handshake — against the Loki endpoint before returning, so a misconfigured or unreachable destination fails fast at startup rather than silently dropping events at the first push. Set to `false` for sidecar/lazy-start deployments where Loki may not yet be running when the application starts; the runtime retry path handles delivery once Loki becomes available. The probe applies the SAME SSRF policy as the runtime transport: `allow_private_ranges: false` rejects loopback / RFC 1918 at probe time too. |
 | `verify_on_startup_timeout` | duration | `5s` | any positive duration | Bounds the construction-time probe. Independent of `timeout` (which governs runtime requests). Operators on slow WAN paths can raise this; CI/local development is fine with the default. Ignored when `verify_on_startup: false`. |
 
@@ -498,7 +499,8 @@ be set. The library rejects this at construction time.
 ```yaml
 loki:
   url: "https://loki.internal:3100/loki/api/v1/push"
-  tls_ca: "/etc/audit/internal-ca.pem"
+  tls:
+    ca: "/etc/audit/internal-ca.pem"
 ```
 
 ### Mutual TLS (mTLS)
@@ -506,9 +508,10 @@ loki:
 ```yaml
 loki:
   url: "https://loki.internal:3100/loki/api/v1/push"
-  tls_ca: "/etc/audit/ca.pem"
-  tls_cert: "/etc/audit/client-cert.pem"
-  tls_key: "/etc/audit/client-key.pem"
+  tls:
+    ca: "/etc/audit/ca.pem"
+    cert: "/etc/audit/client-cert.pem"
+    key: "/etc/audit/client-key.pem"
 ```
 
 ### TLS Policy
@@ -517,7 +520,7 @@ By default, only TLS 1.3 is accepted. For legacy infrastructure:
 
 ```yaml
 loki:
-  tls_policy:
+  tls:
     allow_tls12: true          # accept TLS 1.2 connections
     allow_weak_ciphers: false  # keep strong ciphers even with TLS 1.2
 ```
@@ -636,7 +639,7 @@ Before flipping either flag in production, the operator MUST:
    manifest (Helm values, Terraform, Kubernetes ConfigMap).
 2. Set the Loki receiver behind authentication
    (`basic_auth.username` / `basic_auth.password`, or a bearer token,
-   or mTLS via `tls_cert` + `tls_key`) so the relaxed network posture
+   or mTLS via `tls.cert` + `tls.key`) so the relaxed network posture
    does not become an open ingest path.
 3. Pin egress to the Loki host via NetworkPolicy / firewall rules.
 
@@ -793,9 +796,10 @@ outputs:
     loki:
       url: "https://loki.internal:3100/loki/api/v1/push"
       tenant_id: "${SERVICE_NAME}"
-      tls_ca: "/etc/audit/ca.pem"
-      tls_cert: "/etc/audit/client.pem"
-      tls_key: "/etc/audit/client-key.pem"
+      tls:
+        ca: "/etc/audit/ca.pem"
+        cert: "/etc/audit/client.pem"
+        key: "/etc/audit/client-key.pem"
       batch_size: 200
       max_batch_bytes: 5242880          # 5 MiB
       flush_interval: "10s"
@@ -876,7 +880,7 @@ for the factory pattern and complete interface documentation.
 | `loki: url must not contain credentials` | URL has `user:pass@host` | Use `basic_auth` block instead |
 | `loki: basic_auth and bearer_token are mutually exclusive` | Both set | Choose one authentication method |
 | `loki: basic_auth.username must not be empty` | Empty username | Set the username |
-| `loki: tls_cert and tls_key must both be set or both empty` | Only one provided | Provide both cert and key, or neither |
+| `loki: tls.cert and tls.key must both be set or both empty` | Only one provided | Provide both cert and key, or neither |
 | `loki: static label name "X" is invalid` | Label has hyphens/dots/spaces | Use only `[a-zA-Z_][a-zA-Z0-9_]*` |
 | `loki: static label "X" has empty value` | Empty string value | Provide a non-empty value |
 | `loki: static label "X" value contains control characters` | Newlines or other control chars | Remove control characters |

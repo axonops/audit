@@ -448,8 +448,8 @@ type recordingMetrics struct {
 }
 
 func (r *recordingMetrics) RecordFlush(_ int, _ time.Duration) { r.flushes.Add(1) }
-func (r *recordingMetrics) RecordDrop()                        { r.drops.Add(1) }
-func (r *recordingMetrics) RecordError()                       { r.errors.Add(1) }
+func (r *recordingMetrics) RecordDrop(count int)               { r.drops.Add(int64(count)) }
+func (r *recordingMetrics) RecordError(count int)              { r.errors.Add(int64(count)) }
 func (r *recordingMetrics) RecordRetry(_ int)                  { r.retries.Add(1) }
 
 func TestOutput_HTTP503_Retries(t *testing.T) {

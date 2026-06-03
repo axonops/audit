@@ -55,8 +55,6 @@ func ExampleNew() {
 	defer func() { _ = out.Close() }()
 
 	fmt.Println(out.Name())
-	fmt.Println(out.ReportsDelivery())
 	// Output:
 	// loki:localhost:3100
-	// true
 }

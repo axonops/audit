@@ -137,22 +137,11 @@ func TestOutput_DestinationKey(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// ReportsDelivery()
-// ---------------------------------------------------------------------------
-
-func TestOutput_ReportsDelivery(t *testing.T) {
-	t.Parallel()
-
-	out, err := loki.New(validConfig())
-	require.NoError(t, err)
-	assert.True(t, out.ReportsDelivery(),
-		"Loki output must report its own delivery metrics")
-	require.NoError(t, out.Close())
-}
-
-// ---------------------------------------------------------------------------
 // Interface assertions
 // ---------------------------------------------------------------------------
+
+// Note (#894): TestOutput_ReportsDelivery removed when
+// audit.DeliveryReporter was deleted alongside Metrics.RecordDelivery.
 
 func TestOutput_ImplementsInterfaces(t *testing.T) {
 	t.Parallel()
@@ -165,7 +154,6 @@ func TestOutput_ImplementsInterfaces(t *testing.T) {
 	// but runtime verification confirms the factory returns the right type.
 	assert.Implements(t, (*audit.Output)(nil), out)
 	assert.Implements(t, (*audit.MetadataWriter)(nil), out)
-	assert.Implements(t, (*audit.DeliveryReporter)(nil), out)
 	assert.Implements(t, (*audit.DestinationKeyer)(nil), out)
 }
 
@@ -472,9 +460,9 @@ type testOutputMetrics struct {
 	flushN    int
 }
 
-func (m *testOutputMetrics) RecordDrop() {
+func (m *testOutputMetrics) RecordDrop(count int) {
 	m.mu.Lock()
-	m.dropCount++
+	m.dropCount += count
 	m.mu.Unlock()
 }
 
@@ -484,7 +472,7 @@ func (m *testOutputMetrics) RecordFlush(_ int, _ time.Duration) {
 	m.mu.Unlock()
 }
 
-func (m *testOutputMetrics) RecordError()              {}
+func (m *testOutputMetrics) RecordError(int)           {}
 func (m *testOutputMetrics) RecordRetry(_ int)         {}
 func (m *testOutputMetrics) RecordQueueDepth(_, _ int) {}
 
@@ -592,7 +580,7 @@ func TestOutputFactory_LoggerReachesOutput(t *testing.T) {
 	yaml := []byte(
 		"url: https://loki.example.com/loki/api/v1/push\n" +
 			"verify_on_startup: false\n" +
-			"tls_policy:\n" +
+			"tls:\n" +
 			"  allow_tls12: true\n" +
 			"  allow_weak_ciphers: true\n" +
 			"batch_size: 1\nflush_interval: 1s\ntimeout: 5s\n",
@@ -655,15 +643,15 @@ func newOutputMetricsCollector() *outputMetricsCollector {
 	return &outputMetricsCollector{}
 }
 
-func (m *outputMetricsCollector) RecordDrop() {
+func (m *outputMetricsCollector) RecordDrop(count int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.dropCount++
+	m.dropCount += count
 }
-func (m *outputMetricsCollector) RecordError() {
+func (m *outputMetricsCollector) RecordError(count int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.errCount++
+	m.errCount += count
 }
 func (m *outputMetricsCollector) drops() int {
 	m.mu.Lock()

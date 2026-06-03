@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"fmt"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -279,12 +278,14 @@ func registerMetricsWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 }
 
 func registerMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^the metrics should have recorded event "([^"]*)" for output "([^"]*)"$`, func(status, output string) error {
-		return assertMetricsEvent(tc, output, status)
-	})
-	ctx.Step(`^the metrics should have recorded at least (\d+) success events$`, func(minCount int) error {
-		return assertMetricsTotalSuccessEvents(tc, minCount)
-	})
+	// Note (#894): the step registrations for
+	//   "the metrics should have recorded event %q for output %q"
+	//   "the metrics should have recorded at least N success events"
+	//   "the metrics should not have recorded a success event for webhook output"
+	// were removed alongside Metrics.RecordDelivery / EventStatus. Per-
+	// output delivery counts now flow through OutputMetrics.RecordFlush
+	// and OutputMetrics.RecordError(count), asserted by the
+	// output_metrics_factory feature and the per-output feature files.
 	ctx.Step(`^the metrics should have recorded a validation error$`, func() error {
 		return assertMetricsValidationError(tc, true)
 	})
@@ -296,9 +297,6 @@ func registerMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 	})
 	ctx.Step(`^the metrics should have recorded at least (\d+) buffer drop$`, func(minCount int) error {
 		return assertMetricsBufferDrops(tc, minCount)
-	})
-	ctx.Step(`^the metrics should not have recorded a success event for webhook output$`, func() error {
-		return assertMetricsNoWebhookCoreSuccess(tc)
 	})
 	ctx.Step(`^the metrics should have recorded a serialization error$`, func() error {
 		return assertMetricsSerializationError(tc)
@@ -312,37 +310,6 @@ func registerMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 }
 
 // --- Metrics assertion helpers ---
-
-func assertMetricsEvent(tc *AuditTestContext, output, status string) error {
-	if tc.Auditor != nil {
-		_ = tc.Auditor.Close()
-	}
-	tc.MockMetrics.mu.Lock()
-	defer tc.MockMetrics.mu.Unlock()
-	key := output + ":" + status
-	if tc.MockMetrics.Events[key] == 0 {
-		return fmt.Errorf("expected RecordDelivery(%q, %q), got 0 (all: %v)", output, status, tc.MockMetrics.Events)
-	}
-	return nil
-}
-
-func assertMetricsTotalSuccessEvents(tc *AuditTestContext, minCount int) error {
-	if tc.Auditor != nil {
-		_ = tc.Auditor.Close()
-	}
-	tc.MockMetrics.mu.Lock()
-	defer tc.MockMetrics.mu.Unlock()
-	total := 0
-	for k, v := range tc.MockMetrics.Events {
-		if strings.HasSuffix(k, ":success") {
-			total += v
-		}
-	}
-	if total < minCount {
-		return fmt.Errorf("expected >= %d success events, got %d", minCount, total)
-	}
-	return nil
-}
 
 func assertMetricsValidationError(tc *AuditTestContext, expectPresent bool) error {
 	tc.MockMetrics.mu.Lock()
@@ -396,23 +363,6 @@ func assertMetricsSerializationError(tc *AuditTestContext) error {
 	}
 	if total == 0 {
 		return fmt.Errorf("expected at least 1 serialization error, got 0")
-	}
-	return nil
-}
-
-func assertMetricsNoWebhookCoreSuccess(tc *AuditTestContext) error {
-	if tc.Auditor != nil {
-		_ = tc.Auditor.Close()
-	}
-	tc.MockMetrics.mu.Lock()
-	defer tc.MockMetrics.mu.Unlock()
-	// Webhook output implements DeliveryReporter, so core metrics
-	// (RecordDelivery) should NOT be called for webhook outputs.
-	// Check that no "webhook:*:success" key exists.
-	for k, v := range tc.MockMetrics.Events {
-		if strings.Contains(k, "webhook") && strings.HasSuffix(k, ":success") && v > 0 {
-			return fmt.Errorf("expected no core success metrics for webhook, but found %q=%d", k, v)
-		}
 	}
 	return nil
 }

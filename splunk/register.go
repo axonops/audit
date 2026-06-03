@@ -15,6 +15,7 @@
 package splunk
 
 import (
+	"bytes"
 	"fmt"
 	"time"
 
@@ -83,10 +84,7 @@ type yamlSplunkConfig struct { //nolint:govet // fieldalignment: readability pre
 	AckMode            AckMode           `yaml:"ack_mode"`
 	AckPollInterval    yamlDuration      `yaml:"ack_poll_interval"`
 	AckResendWindow    yamlDuration      `yaml:"ack_resend_window"`
-	TLSCA              string            `yaml:"tls_ca"`
-	TLSCert            string            `yaml:"tls_cert"`
-	TLSKey             string            `yaml:"tls_key"`
-	TLSPolicy          *yamlTLSPolicy    `yaml:"tls_policy"`
+	TLS                *yamlTLS          `yaml:"tls"`
 	AllowInsecureHTTP  bool              `yaml:"allow_insecure_http"`
 	AllowPrivateRanges bool              `yaml:"allow_private_ranges"`
 	// VerifyOnStartup is the positive YAML surface for the inverted
@@ -97,10 +95,17 @@ type yamlSplunkConfig struct { //nolint:govet // fieldalignment: readability pre
 	StartupVerificationTimeout yamlDuration `yaml:"startup_verification_timeout"`
 }
 
-// yamlTLSPolicy mirrors the loki/syslog/webhook pattern (#581).
-type yamlTLSPolicy struct {
-	AllowTLS12       bool `yaml:"allow_tls12"`
-	AllowWeakCiphers bool `yaml:"allow_weak_ciphers"`
+// yamlTLS groups all TLS configuration under a single `tls:` block.
+// Cert material (ca/cert/key) and policy flags (allow_tls12,
+// allow_weak_ciphers) live together; SSRF / transport-policy flags
+// (allow_insecure_http, allow_private_ranges) stay at the output's
+// top level — they are not TLS concerns.
+type yamlTLS struct {
+	CA               string `yaml:"ca"`
+	Cert             string `yaml:"cert"`
+	Key              string `yaml:"key"`
+	AllowTLS12       bool   `yaml:"allow_tls12"`
+	AllowWeakCiphers bool   `yaml:"allow_weak_ciphers"`
 }
 
 // yamlDuration is a time.Duration that unmarshals from a YAML string.
@@ -154,8 +159,9 @@ func floatPtrOrDefault(p *float64, dflt float64) float64 {
 // and NewFactory.
 func buildOutput(name string, rawConfig []byte, om audit.OutputMetrics, fctx audit.FrameworkContext) (audit.Output, error) { //nolint:gocritic // hugeParam: signature constrained by precedent
 	var y yamlSplunkConfig
-	if err := yaml.Unmarshal(rawConfig, &y); err != nil {
-		return nil, fmt.Errorf("audit/splunk: parse YAML config for %q: %w", name, err)
+	dec := yaml.NewDecoder(bytes.NewReader(rawConfig), yaml.DisallowUnknownField())
+	if err := dec.Decode(&y); err != nil {
+		return nil, fmt.Errorf("audit/splunk: output %q: %w", name, audit.WrapUnknownFieldError(err, y))
 	}
 
 	cfg := &Config{
@@ -183,18 +189,18 @@ func buildOutput(name string, rawConfig []byte, om audit.OutputMetrics, fctx aud
 		AckMode:                    y.AckMode,
 		AckPollInterval:            durOrDefault(y.AckPollInterval, DefaultAckPollInterval),
 		AckResendWindow:            durOrDefault(y.AckResendWindow, DefaultAckResendWindow),
-		TLSCA:                      y.TLSCA,
-		TLSCert:                    y.TLSCert,
-		TLSKey:                     y.TLSKey,
 		AllowInsecureHTTP:          y.AllowInsecureHTTP,
 		AllowPrivateRanges:         y.AllowPrivateRanges,
 		DisableStartupVerification: y.VerifyOnStartup != nil && !*y.VerifyOnStartup,
 		StartupVerificationTimeout: durOrDefault(y.StartupVerificationTimeout, DefaultStartupVerificationTimeout),
 	}
-	if y.TLSPolicy != nil {
+	if y.TLS != nil {
+		cfg.TLSCA = y.TLS.CA
+		cfg.TLSCert = y.TLS.Cert
+		cfg.TLSKey = y.TLS.Key
 		cfg.TLSPolicy = &audit.TLSPolicy{
-			AllowTLS12:       y.TLSPolicy.AllowTLS12,
-			AllowWeakCiphers: y.TLSPolicy.AllowWeakCiphers,
+			AllowTLS12:       y.TLS.AllowTLS12,
+			AllowWeakCiphers: y.TLS.AllowWeakCiphers,
 		}
 	}
 

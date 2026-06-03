@@ -980,7 +980,7 @@ and map to standard ArcSight CEF extension keys.
 //   - [Stdout] — convenience constructor for [StdoutOutput] writing to [os.Stdout]
 //   - [StdoutOutput] — writes events to stdout or any io.Writer; included in core
 //   - [WithOutputs] — registers unnamed outputs; [WithNamedOutput] for per-output routing
-//   - [DeliveryReporter] — optional interface for outputs that handle their own delivery metrics
+//   - [LastDeliveryReporter] — optional interface exposing a per-output last-delivery timestamp
 //   - [MetadataWriter] — optional interface for outputs that need structured per-event context (event type, severity, category, timestamp)
 //   - [EventMetadata] — per-event value type passed to [MetadataWriter.WriteWithMetadata]
 //
@@ -2854,12 +2854,14 @@ standard_fields:
   source_ip: "${DEFAULT_SOURCE_IP:-10.0.0.1}"
   actor_id: "${SERVICE_ACCOUNT:-system}"
 
-# TLS Policy (per-output / per-provider) ────────────────
-# TLS policy is configured inside each output block (syslog,
-# webhook, loki) and each secret-provider block (vault, openbao).
-# There is no root-level tls_policy key — attempting to set one
-# fails at startup with an "unknown top-level key" error. See the
-# per-output blocks below for examples.
+# TLS (per-output / per-provider) ────────────────────────
+# TLS is configured inside each output block's tls: sub-block
+# (syslog, webhook, loki, splunk) and each secret-provider's tls:
+# sub-block (vault, openbao). The tls: block groups cert material
+# (ca/cert/key) and policy flags (allow_tls12/allow_weak_ciphers)
+# together. There is no root-level tls: key — attempting to set
+# one fails at startup with an "unknown top-level key" error. See
+# the per-output blocks below for examples.
 
 # Outputs ─────────────────────────────────────────────────
 # Map of named outputs. Each output has a type, optional config,
@@ -2898,18 +2900,18 @@ outputs:
       address: "${SYSLOG_HOST}:6514"
       app_name: "myapp"            # RFC 5424 APP-NAME — cascades from top-level app_name when omitted (see docs/syslog-output.md#app-name-cascade)
       facility: "local0"           # syslog facility (default: "local0")
-      tls_ca: "/etc/audit/ca.pem"
-      tls_cert: "/etc/audit/client-cert.pem"   # for mTLS
-      tls_key: "/etc/audit/client-key.pem"     # for mTLS
+      tls:
+        ca: "/etc/audit/ca.pem"
+        cert: "/etc/audit/client-cert.pem"  # for mTLS
+        key: "/etc/audit/client-key.pem"    # for mTLS
+        # allow_tls12: false       # allow TLS 1.2 (default: TLS 1.3 only)
+        # allow_weak_ciphers: false # allow weaker ciphers with TLS 1.2
       max_retries: 10              # reconnection attempts (default: 10)
       # Batching (mirrors loki/webhook conventions — #599):
       batch_size: 100              # events per flush (default: 100; set 1 to disable)
       flush_interval: "5s"         # max time between flushes (default: 5s)
       max_batch_bytes: 1048576     # 1 MiB; oversized single events flush alone
       max_event_bytes: 1048576     # 1 MiB per-event size cap; oversized events rejected (#688)
-      # tls_policy:                # TLS version policy
-      #   allow_tls12: false       # allow TLS 1.2 (default: TLS 1.3 only)
-      #   allow_weak_ciphers: false # allow weaker ciphers with TLS 1.2
     formatter:
       type: cef                    # SIEM-native format
       vendor: "MyCompany"
@@ -2933,10 +2935,10 @@ outputs:
       # buffer_size: 10000        # internal buffer; events dropped when full
       # headers:                   # custom HTTP headers
       #   Authorization: "Bearer ${AUDIT_TOKEN}"
-      # tls_ca: "/etc/audit/ca.pem"
-      # tls_cert: "/etc/audit/client-cert.pem"
-      # tls_key: "/etc/audit/client-key.pem"
-      # tls_policy:                # TLS version policy
+      # tls:
+      #   ca: "/etc/audit/ca.pem"
+      #   cert: "/etc/audit/client-cert.pem"
+      #   key: "/etc/audit/client-key.pem"
       #   allow_tls12: false
       #   allow_weak_ciphers: false
       # allow_insecure_http: true  # MUST NOT be true in production
@@ -2969,7 +2971,8 @@ outputs:
       #   username: "loki-writer"
       #   password: "${LOKI_PASSWORD}"
       # bearer_token: "${LOKI_TOKEN}"
-      # tls_ca: "/etc/audit/ca.pem"
+      # tls:
+      #   ca: "/etc/audit/ca.pem"
       # allow_insecure_http: true    # MUST NOT be true in production
       # allow_private_ranges: true   # disable SSRF protection (dev only)
     route:
@@ -2990,7 +2993,7 @@ outputs:
 | `auditor` | No | Auditor configuration. All fields optional; defaults applied if omitted. |
 | `outputs` | Yes | Map of named outputs. At least one must be defined. Maximum: 100. |
 
-> ⚠️ **No root-level `tls_policy` key.** TLS policy is configured inside each output (under `syslog:`, `webhook:`, `loki:`) and each secret provider (under `vault:`, `openbao:`). Setting `tls_policy:` at the root fails at startup with an "unknown top-level key" error. See [Per-Output TLS Policy](#per-output-tls-policy) below.
+> ⚠️ **No root-level `tls:` key.** TLS configuration lives inside each output's `tls:` sub-block (`syslog:`, `webhook:`, `loki:`, `splunk:`) and each secret provider's `tls:` sub-block (`vault:`, `openbao:`). Setting `tls:` (or the legacy `tls_policy:`) at the root fails at startup with an "unknown top-level key" error. See [Per-Output TLS](#per-output-tls) below.
 
 ## Config Schema Versioning
 
@@ -3209,17 +3212,21 @@ warnings routed through `slog.Default` — a subtle inconsistency if
 your application uses a non-default handler. Both options accept nil
 (equivalent to `slog.Default`).
 
-## Per-Output TLS Policy
+## Per-Output TLS
 
-TLS policy is configured inside each TLS-capable block — `syslog:`
-(when `network: tcp+tls`), `webhook:` (when `https://`), `loki:`
-(when `https://`), and each secret provider (`vault:`, `openbao:`).
-There is no root-level `tls_policy:` key — attempting to set one
-fails at startup with an "unknown top-level key" error.
+TLS is configured inside each TLS-capable output's `tls:` sub-block
+— `syslog:` (when `network: tcp+tls`), `webhook:` (when `https://`),
+`loki:` (when `https://`), `splunk:` (when `https://`) — and inside
+each secret provider's `tls:` sub-block (`vault:`, `openbao:`). The
+`tls:` block groups cert material (`ca`, `cert`, `key`) and policy
+flags (`allow_tls12`, `allow_weak_ciphers`) together. There is no
+root-level `tls:` key — attempting to set one fails at startup with
+an "unknown top-level key" error.
 
-Each output or provider that does not specify `tls_policy` defaults
-to **TLS 1.3 only** (no TLS 1.2, no weak ciphers). Every `tls_policy`
-block stands alone — there is no inheritance from a shared default.
+Each output or provider that omits the `tls:` block (or sets it
+without `allow_tls12: true`) defaults to **TLS 1.3 only** (no TLS
+1.2, no weak ciphers). Every `tls:` block stands alone — there is
+no inheritance from a shared default.
 
 ```yaml
 outputs:
@@ -3228,7 +3235,8 @@ outputs:
     syslog:
       network: tcp+tls
       address: siem.example.com:6514
-      tls_policy:
+      tls:
+        ca: /etc/audit/ca.pem
         allow_tls12: true          # required for a legacy SIEM target
         allow_weak_ciphers: false  # keep ciphers strict even when TLS 1.2
 
@@ -3236,29 +3244,36 @@ outputs:
     type: webhook
     webhook:
       url: https://alerts.example.com/webhook
-      # no tls_policy → default TLS 1.3 only, no weak ciphers
+      # no tls block → default TLS 1.3 only, no weak ciphers
 
 secrets:
   my_vault:
     type: vault
     vault:
       address: https://vault.example.com:8200
-      tls_policy:
+      tls:
+        ca: /etc/audit/vault-ca.pem
         allow_tls12: false
         allow_weak_ciphers: false
 ```
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `allow_tls12` | `false` | Allow TLS 1.2 connections in addition to TLS 1.3. When `false` (default), only TLS 1.3 is accepted. Set `true` only when connecting to legacy infrastructure that does not support TLS 1.3. |
-| `allow_weak_ciphers` | `false` | Allow weaker cipher suites when TLS 1.2 is enabled. Has no effect when `allow_tls12` is `false`. SHOULD NOT be enabled unless required by a specific server. |
+| `tls.ca` | `""` | Path to a custom CA certificate PEM file for server-certificate verification. Empty means use the system trust store. |
+| `tls.cert` | `""` | Path to a client certificate for mTLS. MUST be paired with `tls.key`. |
+| `tls.key` | `""` | Path to the client private key for mTLS. MUST be paired with `tls.cert`. |
+| `tls.allow_tls12` | `false` | Allow TLS 1.2 connections in addition to TLS 1.3. When `false` (default), only TLS 1.3 is accepted. Set `true` only when connecting to legacy infrastructure that does not support TLS 1.3. |
+| `tls.allow_weak_ciphers` | `false` | Allow weaker cipher suites when TLS 1.2 is enabled. Has no effect when `allow_tls12` is `false`. SHOULD NOT be enabled unless required by a specific server. |
 
 > ⚠️ **Security:** The default policy (TLS 1.3 only, no weak ciphers)
 > is the most secure configuration. Only relax these settings when
 > connecting to infrastructure that cannot be upgraded.
 
 Outputs that do not use TLS (file, stdout, syslog with `network: tcp`
-or `network: udp`) have no `tls_policy` field.
+or `network: udp`) have no `tls:` field. SSRF/transport-policy flags
+(`allow_insecure_http`, `allow_private_ranges`) live at each HTTP
+output's top level — they are HTTP/network policy, not TLS, and
+nesting them inside `tls:` would be a category error.
 
 ### Tested TLS rejection failure modes
 
@@ -3349,10 +3364,7 @@ Both `openbao` and `vault` accept the same configuration fields:
 | `address` | Yes | — | Server URL. HTTPS required unless `allow_insecure_http` is set. |
 | `token` | Yes | — | Authentication token. Use `${ENV_VAR}` — never hardcode. |
 | `namespace` | No | `""` | Namespace prefix (sent as `X-Vault-Namespace` header). |
-| `tls_ca` | No | `""` | Path to custom CA certificate PEM file. |
-| `tls_cert` | No | `""` | Path to client certificate for mTLS. Must be paired with `tls_key`. |
-| `tls_key` | No | `""` | Path to client private key for mTLS. Must be paired with `tls_cert`. |
-| `tls_policy` | No | TLS 1.3 only | Per-provider TLS policy. Configure inside this provider block only; there is no root-level `tls_policy`. |
+| `tls` | No | empty (TLS 1.3 only) | Per-provider TLS configuration block grouping `ca`, `cert`, `key`, `allow_tls12`, and `allow_weak_ciphers`. Configure inside this provider block only; there is no root-level `tls`. See [Per-Output TLS](#per-output-tls). |
 | `allow_insecure_http` | No | `false` | Permit `http://` URLs. **MUST NOT be `true` in production.** Plaintext HTTP exposes the authentication token to network observers. Use only for local development with Docker Compose. |
 | `allow_private_ranges` | No | `false` | Permit connections to RFC 1918 private addresses and loopback. Required for local development where the provider runs on `127.0.0.1` or a Docker network. Cloud metadata endpoints remain blocked. |
 
@@ -3513,14 +3525,14 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | `address` | (required) | Host:port. Supports `${VAR}` substitution. |
 | `app_name` | top-level `app_name`, else `"audit"` | RFC 5424 APP-NAME field. Cascades from top-level `app_name` when omitted. See [APP-NAME Cascade](syslog-output.md#app-name-cascade). |
 | `facility` | `"local0"` | Syslog facility. Valid: kern, user, mail, daemon, auth, syslog, lpr, news, uucp, cron, authpriv, ftp, local0-local7. |
-| `tls_ca` | — | CA certificate path for TLS verification. |
-| `tls_cert` | — | Client certificate path for mTLS. |
-| `tls_key` | — | Client key path for mTLS. |
+| `tls` | — | TLS configuration block. See [Per-Output TLS](#per-output-tls). Only applies when `network: tcp+tls`. |
+| `tls.ca` | — | CA certificate path for TLS verification. |
+| `tls.cert` | — | Client certificate path for mTLS. MUST be set together with `tls.key`. |
+| `tls.key` | — | Client key path for mTLS. MUST be set together with `tls.cert`. |
+| `tls.allow_tls12` | `false` | Allow TLS 1.2 in addition to TLS 1.3. |
+| `tls.allow_weak_ciphers` | `false` | Allow weaker cipher suites when TLS 1.2 is enabled. |
 | `buffer_size` | `10000` | Internal async buffer capacity. Maximum: 100,000. |
 | `max_retries` | `10` | Reconnection attempts before giving up. |
-| `tls_policy` | — | TLS version policy (nested object). |
-| `tls_policy.allow_tls12` | `false` | Allow TLS 1.2 in addition to TLS 1.3. |
-| `tls_policy.allow_weak_ciphers` | `false` | Allow weaker cipher suites when TLS 1.2 is enabled. |
 
 ## Webhook Output Fields
 
@@ -3533,14 +3545,14 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | `timeout` | `"10s"` | HTTP request timeout. |
 | `max_retries` | `3` | Retry attempts with exponential backoff. Maximum: 20. |
 | `headers` | — | Map of custom HTTP headers added to every request. |
-| `tls_ca` | — | CA certificate path for TLS verification. |
-| `tls_cert` | — | Client certificate path for mTLS. |
-| `tls_key` | — | Client key path for mTLS. |
-| `tls_policy` | — | TLS version policy (nested object). |
-| `tls_policy.allow_tls12` | `false` | Allow TLS 1.2 in addition to TLS 1.3. |
-| `tls_policy.allow_weak_ciphers` | `false` | Allow weaker cipher suites when TLS 1.2 is enabled. |
-| `allow_insecure_http` | `false` | Allow `http://` URLs. MUST NOT be `true` in production. |
-| `allow_private_ranges` | `false` | Allow private/loopback IP ranges. Disables SSRF protection. |
+| `tls` | — | TLS configuration block. See [Per-Output TLS](#per-output-tls). |
+| `tls.ca` | — | CA certificate path for TLS verification. |
+| `tls.cert` | — | Client certificate path for mTLS. MUST be set together with `tls.key`. |
+| `tls.key` | — | Client key path for mTLS. MUST be set together with `tls.cert`. |
+| `tls.allow_tls12` | `false` | Allow TLS 1.2 in addition to TLS 1.3. |
+| `tls.allow_weak_ciphers` | `false` | Allow weaker cipher suites when TLS 1.2 is enabled. |
+| `allow_insecure_http` | `false` | Allow `http://` URLs. MUST NOT be `true` in production. Top-level — not TLS. |
+| `allow_private_ranges` | `false` | Allow private/loopback IP ranges. Disables SSRF protection. Top-level — not TLS. |
 
 ## Loki Output Fields
 
@@ -3561,13 +3573,14 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | `timeout` | `"10s"` | HTTP request timeout. Min: `"1s"`. Max: `"5m"`. |
 | `max_retries` | `3` | Retry attempts on 429/5xx with exponential backoff. Max: 20. |
 | `buffer_size` | `10000` | Internal async buffer capacity (Level 2). Events dropped when full. Min: 100. Max: 1,000,000. See [Two-Level Buffering](async-delivery.md#two-level-buffering). |
-| `tls_ca` | — | CA certificate path for TLS verification. |
-| `tls_cert` | — | Client certificate path for mTLS. MUST be set together with `tls_key`. |
-| `tls_key` | — | Client key path for mTLS. MUST be set together with `tls_cert`. |
-| `tls_policy.allow_tls12` | `false` | Allow TLS 1.2 in addition to TLS 1.3. |
-| `tls_policy.allow_weak_ciphers` | `false` | Allow weaker cipher suites when TLS 1.2 is enabled. |
-| `allow_insecure_http` | `false` | Allow `http://` URLs. MUST NOT be `true` in production. |
-| `allow_private_ranges` | `false` | Allow private/loopback IP ranges. Disables SSRF protection. |
+| `tls` | — | TLS configuration block. See [Per-Output TLS](#per-output-tls). |
+| `tls.ca` | — | CA certificate path for TLS verification. |
+| `tls.cert` | — | Client certificate path for mTLS. MUST be set together with `tls.key`. |
+| `tls.key` | — | Client key path for mTLS. MUST be set together with `tls.cert`. |
+| `tls.allow_tls12` | `false` | Allow TLS 1.2 in addition to TLS 1.3. |
+| `tls.allow_weak_ciphers` | `false` | Allow weaker cipher suites when TLS 1.2 is enabled. |
+| `allow_insecure_http` | `false` | Allow `http://` URLs. MUST NOT be `true` in production. Top-level — not TLS. |
+| `allow_private_ranges` | `false` | Allow private/loopback IP ranges. Disables SSRF protection. Top-level — not TLS. |
 
 ## Environment Variable Substitution
 
@@ -4959,10 +4972,10 @@ TCP+TLS for events with large payloads.
 ### TCP+TLS
 
 Encrypted transport meeting compliance requirements. TLS 1.3 is
-enforced by default (configurable via `tls_policy`). Supports:
+enforced by default (configurable via the `tls:` block). Supports:
 
-- **Server verification** via CA certificate (`tls_ca`)
-- **Mutual TLS (mTLS)** via client certificates (`tls_cert`, `tls_key`)
+- **Server verification** via CA certificate (`tls.ca`)
+- **Mutual TLS (mTLS)** via client certificates (`tls.cert`, `tls.key`)
 
 See [TLS and mTLS Configuration](#tls-and-mtls-configuration) below.
 
@@ -5111,14 +5124,14 @@ than holding `Close()` hostage through a full retry cycle.
 | `flush_interval` | duration | `"5s"` | Max time between flushes (1ms–1h). See [Batching](#batching) |
 | `max_batch_bytes` | int | `1048576` (1 MiB) | Max accumulated bytes before flush (1 KiB–10 MiB). Oversized single events flush alone. See [Batching](#batching) |
 | `max_retries` | int | `10` | Maximum consecutive reconnection attempts. Range: 0-20 (0 defaults to 10, values > 20 rejected) |
-| `tls_ca` | string | *(none)* | Path to CA certificate for server verification |
-| `tls_cert` | string | *(none)* | Path to client certificate for mTLS |
-| `tls_key` | string | *(none)* | Path to client private key for mTLS |
-| `tls_policy` | object | *(nil — TLS 1.3 only)* | TLS version and cipher policy |
-| `tls_policy.allow_tls12` | bool | `false` | Allow TLS 1.2 (default: TLS 1.3 only) |
-| `tls_policy.allow_weak_ciphers` | bool | `false` | Allow weaker cipher suites with TLS 1.2 |
+| `tls` | object | *(none — TLS 1.3 only)* | TLS configuration block. Groups cert material and policy flags. Only used when `network: tcp+tls`. |
+| `tls.ca` | string | *(none)* | Path to CA certificate for server verification |
+| `tls.cert` | string | *(none)* | Path to client certificate for mTLS |
+| `tls.key` | string | *(none)* | Path to client private key for mTLS |
+| `tls.allow_tls12` | bool | `false` | Allow TLS 1.2 (default: TLS 1.3 only) |
+| `tls.allow_weak_ciphers` | bool | `false` | Allow weaker cipher suites with TLS 1.2 |
 | `verify_on_startup` | bool | `true` | When `true` (default), `New()` dials the syslog server — and, on `tcp+tls`, completes the TLS handshake — before returning, so a misconfigured or down destination fails fast at startup rather than surfacing as silent event loss once the asynchronous write path triggers. Set to `false` for sidecar/lazy-start deployments where the destination may not yet be ready when the application starts; the runtime reconnect machinery handles "no connection yet" via the existing exponential-backoff retry path. |
-| `verify_on_startup_timeout` | duration | `5s` | Bounds the construction-time dial. Independent of `tls_handshake_timeout` (which bounds reconnect handshakes during runtime). Ignored when `verify_on_startup: false`. |
+| `verify_on_startup_timeout` | duration | `5s` | Bounds the construction-time dial. Independent of the Go-only `Config.TLSHandshakeTimeout` (which bounds reconnect handshakes during runtime; not currently YAML-exposed — set programmatically when constructing the `syslog.Config`). Ignored when `verify_on_startup: false`. |
 
 ### Validation Rules
 
@@ -5127,7 +5140,7 @@ than holding `Close()` hostage through a full retry cycle.
 - `facility` MUST be a valid facility name (see table below)
 - `hostname` MUST contain only PRINTUSASCII bytes (33–126) and be at
   most 255 bytes
-- `tls_cert` and `tls_key` MUST both be set or both empty
+- `tls.cert` and `tls.key` MUST both be set or both empty
 - TLS files MUST exist and not be directories
 
 ## TLS and mTLS Configuration
@@ -5141,11 +5154,13 @@ outputs:
     syslog:
       network: "tcp+tls"
       address: "syslog.internal:6514"
-      tls_ca: "/etc/audit/ca.pem"
+      tls:
+        ca: "/etc/audit/ca.pem"
 ```
 
 The server's certificate is verified against the provided CA. If
-`tls_ca` is omitted, the system's default certificate pool is used.
+`tls.ca` is omitted (or the whole `tls:` block is omitted), the
+system's default certificate pool is used.
 
 ### Mutual TLS (mTLS)
 
@@ -5156,9 +5171,10 @@ outputs:
     syslog:
       network: "tcp+tls"
       address: "syslog.internal:6514"
-      tls_ca: "/etc/audit/ca.pem"
-      tls_cert: "/etc/audit/client-cert.pem"
-      tls_key: "/etc/audit/client-key.pem"
+      tls:
+        ca: "/etc/audit/ca.pem"
+        cert: "/etc/audit/client-cert.pem"
+        key: "/etc/audit/client-key.pem"
 ```
 
 Both client certificate and key are required for mTLS. The server must
@@ -5181,7 +5197,7 @@ outputs:
     syslog:
       network: "tcp+tls"
       address: "legacy-syslog.internal:6514"
-      tls_policy:
+      tls:
         allow_tls12: true        # fall back to TLS 1.2
         allow_weak_ciphers: false # still use only secure cipher suites
 ```
@@ -5334,9 +5350,10 @@ outputs:
       address: "${SYSLOG_ADDR}:6514"
       app_name: "${APP_NAME}"
       facility: "local0"
-      tls_ca: "/etc/audit/tls/ca.pem"
-      tls_cert: "/etc/audit/tls/client.pem"
-      tls_key: "/etc/audit/tls/client-key.pem"
+      tls:
+        ca: "/etc/audit/tls/ca.pem"
+        cert: "/etc/audit/tls/client.pem"
+        key: "/etc/audit/tls/client-key.pem"
       max_retries: 10
 ```
 
@@ -5380,7 +5397,7 @@ outputs:
 | `dial tcp host:port: connect: connection refused` | Syslog server not reachable at startup | The server MUST be reachable when the output is created; check address and port |
 | Events silently lost (UDP) | Message too large for UDP | Switch to TCP or TCP+TLS; UDP truncates at ~2048 bytes |
 | TLS handshake failure | Certificate mismatch or expired | Verify CA cert matches server cert; check expiry dates |
-| `tls_cert and tls_key must both be set` | Only one of cert/key provided | Provide both files or neither |
+| `tls.cert and tls.key must both be set` | Only one of cert/key provided | Provide both files or neither |
 | Reconnection storms in logs | Syslog server repeatedly failing | Check server health; increase `max_retries` for transient issues |
 | HOSTNAME shows binary name | `hostname` not set in config | Set `hostname` in the syslog config to match `host` from top-level YAML |
 
@@ -5629,14 +5646,14 @@ NDJSON is:
 | `timeout` | duration | `"10s"` | — | HTTP request timeout (full request/response lifecycle) |
 | `max_retries` | int | `3` | 0–20 | Retry count for 5xx and 429 responses. 0 defaults to 3. Values > 20 rejected |
 | `headers` | map | *(none)* | — | Custom HTTP headers on every request |
-| `tls_ca` | string | *(none)* | — | Path to CA certificate for server verification |
-| `tls_cert` | string | *(none)* | — | Path to client certificate for mTLS |
-| `tls_key` | string | *(none)* | — | Path to client private key for mTLS |
-| `tls_policy` | object | *(nil — TLS 1.3 only)* | — | TLS version and cipher policy |
-| `tls_policy.allow_tls12` | bool | `false` | — | Allow TLS 1.2 fallback |
-| `tls_policy.allow_weak_ciphers` | bool | `false` | — | Allow weaker cipher suites with TLS 1.2 |
-| `allow_insecure_http` | bool | `false` | — | Permit `http://` URLs. MUST NOT be true in production |
-| `allow_private_ranges` | bool | `false` | — | Disable SSRF protection for private/loopback ranges |
+| `tls` | object | *(none — TLS 1.3 only)* | — | TLS configuration block. Groups cert material and policy flags |
+| `tls.ca` | string | *(none)* | — | Path to CA certificate for server verification |
+| `tls.cert` | string | *(none)* | — | Path to client certificate for mTLS |
+| `tls.key` | string | *(none)* | — | Path to client private key for mTLS |
+| `tls.allow_tls12` | bool | `false` | — | Allow TLS 1.2 fallback |
+| `tls.allow_weak_ciphers` | bool | `false` | — | Allow weaker cipher suites with TLS 1.2 |
+| `allow_insecure_http` | bool | `false` | — | Permit `http://` URLs. MUST NOT be true in production. Top-level — not TLS |
+| `allow_private_ranges` | bool | `false` | — | Disable SSRF protection for private/loopback ranges. Top-level — not TLS |
 | `verify_on_startup` | bool | `true` | `true` or `false` | When `true` (default), `New()` performs a TCP dial — and, for `https://` URLs, a TLS handshake — against the webhook endpoint before returning, so a misconfigured or unreachable destination fails fast at startup rather than silently dropping events at the first flush. Set to `false` for sidecar/lazy-start deployments where the receiver may not yet be running when the application starts; the runtime retry path handles delivery once the receiver becomes available. The probe applies the SAME SSRF policy as the runtime transport: `allow_private_ranges: false` rejects loopback / RFC 1918 at probe time too. |
 | `verify_on_startup_timeout` | duration | `5s` | any positive duration | Bounds the construction-time probe. Independent of `timeout` (which governs runtime requests). Operators on slow WAN paths can raise this; CI/local development is fine with the default. Ignored when `verify_on_startup: false`. |
 
@@ -5647,7 +5664,7 @@ NDJSON is:
 - HTTPS is required unless `allow_insecure_http` is true
 - URL MUST NOT contain embedded credentials (use `headers` instead)
 - Header names and values MUST NOT contain CRLF characters
-- `tls_cert` and `tls_key` MUST both be set or both empty
+- `tls.cert` and `tls.key` MUST both be set or both empty
 - `batch_size`, `buffer_size`, `max_retries` are rejected if above
   their upper bounds
 
@@ -5693,7 +5710,8 @@ webhook:
 ```yaml
 webhook:
   url: "https://ingest.example.com/audit"
-  tls_ca: "/etc/audit/ca.pem"
+  tls:
+    ca: "/etc/audit/ca.pem"
 ```
 
 ### Mutual TLS (mTLS)
@@ -5701,9 +5719,10 @@ webhook:
 ```yaml
 webhook:
   url: "https://ingest.example.com/audit"
-  tls_ca: "/etc/audit/ca.pem"
-  tls_cert: "/etc/audit/client-cert.pem"
-  tls_key: "/etc/audit/client-key.pem"
+  tls:
+    ca: "/etc/audit/ca.pem"
+    cert: "/etc/audit/client-cert.pem"
+    key: "/etc/audit/client-key.pem"
 ```
 
 ### TLS Version Policy
@@ -5711,7 +5730,7 @@ webhook:
 ```yaml
 webhook:
   url: "https://legacy-endpoint.internal/audit"
-  tls_policy:
+  tls:
     allow_tls12: true
     allow_weak_ciphers: false
 ```
@@ -5905,7 +5924,7 @@ Before flipping either flag in production, the operator MUST:
 1. Document the specific receiver address and rationale in the
    deployment's Terraform / Helm / Kubernetes manifest comment.
 2. Set the receiver behind authentication (`headers.Authorization`
-   or mTLS — `tls_cert` + `tls_key`) so that the relaxed network
+   or mTLS — `tls.cert` + `tls.key`) so that the relaxed network
    posture does not become an open egress for arbitrary callers.
 3. Pin the receiver host in NetworkPolicy / egress firewall rules
    to limit the blast radius if the URL is ever templated from
@@ -5942,7 +5961,8 @@ outputs:
       flush_interval: "2s"
       timeout: "30s"
       max_retries: 5
-      tls_ca: "/etc/audit/tls/ca.pem"
+      tls:
+        ca: "/etc/audit/tls/ca.pem"
 ```
 
 ### Multi-Destination Configuration
@@ -6370,11 +6390,11 @@ outputs:
         X-Custom-Header: "my-value"
 
       # --- TLS ---
-      tls_ca: "/etc/audit/ca.pem"
-      tls_cert: "/etc/audit/client.pem"   # for mTLS
-      tls_key: "/etc/audit/client-key.pem"
-      tls_policy:
-        allow_tls12: false                # TLS 1.3 only by default
+      tls:
+        ca: "/etc/audit/ca.pem"
+        cert: "/etc/audit/client.pem"   # for mTLS
+        key: "/etc/audit/client-key.pem"
+        allow_tls12: false              # TLS 1.3 only by default
         allow_weak_ciphers: false
 
       # --- Development only ---
@@ -6441,13 +6461,14 @@ the Loki output.
 | `timeout` | duration | `"10s"` | 1s – 5m | HTTP request timeout. |
 | `max_retries` | int | `3` | 1 – 20 | Retry attempts on 429 or 5xx responses. |
 | `buffer_size` | int | `10000` | 100 – 1,000,000 | Internal async buffer capacity. Events are dropped when full. |
-| `tls_ca` | string | — | — | CA certificate path for TLS verification. |
-| `tls_cert` | string | — | — | Client certificate path for mTLS. MUST be set together with `tls_key`. |
-| `tls_key` | string | — | — | Client key path for mTLS. MUST be set together with `tls_cert`. |
-| `tls_policy.allow_tls12` | bool | `false` | — | Allow TLS 1.2 in addition to TLS 1.3. |
-| `tls_policy.allow_weak_ciphers` | bool | `false` | — | Allow weaker cipher suites when TLS 1.2 is enabled. |
-| `allow_insecure_http` | bool | `false` | — | Allow `http://` URLs. **MUST NOT** be `true` in production. |
-| `allow_private_ranges` | bool | `false` | — | Allow private/loopback IP ranges. Disables SSRF protection. |
+| `tls` | object | — | — | TLS configuration block. Groups cert material and policy flags. |
+| `tls.ca` | string | — | — | CA certificate path for TLS verification. |
+| `tls.cert` | string | — | — | Client certificate path for mTLS. MUST be set together with `tls.key`. |
+| `tls.key` | string | — | — | Client key path for mTLS. MUST be set together with `tls.cert`. |
+| `tls.allow_tls12` | bool | `false` | — | Allow TLS 1.2 in addition to TLS 1.3. |
+| `tls.allow_weak_ciphers` | bool | `false` | — | Allow weaker cipher suites when TLS 1.2 is enabled. |
+| `allow_insecure_http` | bool | `false` | — | Allow `http://` URLs. **MUST NOT** be `true` in production. Top-level — not TLS. |
+| `allow_private_ranges` | bool | `false` | — | Allow private/loopback IP ranges. Disables SSRF protection. Top-level — not TLS. |
 | `verify_on_startup` | bool | `true` | `true` or `false` | When `true` (default), `New()` performs a TCP dial — and, for `https://` URLs, a TLS handshake — against the Loki endpoint before returning, so a misconfigured or unreachable destination fails fast at startup rather than silently dropping events at the first push. Set to `false` for sidecar/lazy-start deployments where Loki may not yet be running when the application starts; the runtime retry path handles delivery once Loki becomes available. The probe applies the SAME SSRF policy as the runtime transport: `allow_private_ranges: false` rejects loopback / RFC 1918 at probe time too. |
 | `verify_on_startup_timeout` | duration | `5s` | any positive duration | Bounds the construction-time probe. Independent of `timeout` (which governs runtime requests). Operators on slow WAN paths can raise this; CI/local development is fine with the default. Ignored when `verify_on_startup: false`. |
 
@@ -6496,7 +6517,8 @@ be set. The library rejects this at construction time.
 ```yaml
 loki:
   url: "https://loki.internal:3100/loki/api/v1/push"
-  tls_ca: "/etc/audit/internal-ca.pem"
+  tls:
+    ca: "/etc/audit/internal-ca.pem"
 ```
 
 ### Mutual TLS (mTLS)
@@ -6504,9 +6526,10 @@ loki:
 ```yaml
 loki:
   url: "https://loki.internal:3100/loki/api/v1/push"
-  tls_ca: "/etc/audit/ca.pem"
-  tls_cert: "/etc/audit/client-cert.pem"
-  tls_key: "/etc/audit/client-key.pem"
+  tls:
+    ca: "/etc/audit/ca.pem"
+    cert: "/etc/audit/client-cert.pem"
+    key: "/etc/audit/client-key.pem"
 ```
 
 ### TLS Policy
@@ -6515,7 +6538,7 @@ By default, only TLS 1.3 is accepted. For legacy infrastructure:
 
 ```yaml
 loki:
-  tls_policy:
+  tls:
     allow_tls12: true          # accept TLS 1.2 connections
     allow_weak_ciphers: false  # keep strong ciphers even with TLS 1.2
 ```
@@ -6634,7 +6657,7 @@ Before flipping either flag in production, the operator MUST:
    manifest (Helm values, Terraform, Kubernetes ConfigMap).
 2. Set the Loki receiver behind authentication
    (`basic_auth.username` / `basic_auth.password`, or a bearer token,
-   or mTLS via `tls_cert` + `tls_key`) so the relaxed network posture
+   or mTLS via `tls.cert` + `tls.key`) so the relaxed network posture
    does not become an open ingest path.
 3. Pin egress to the Loki host via NetworkPolicy / firewall rules.
 
@@ -6791,9 +6814,10 @@ outputs:
     loki:
       url: "https://loki.internal:3100/loki/api/v1/push"
       tenant_id: "${SERVICE_NAME}"
-      tls_ca: "/etc/audit/ca.pem"
-      tls_cert: "/etc/audit/client.pem"
-      tls_key: "/etc/audit/client-key.pem"
+      tls:
+        ca: "/etc/audit/ca.pem"
+        cert: "/etc/audit/client.pem"
+        key: "/etc/audit/client-key.pem"
       batch_size: 200
       max_batch_bytes: 5242880          # 5 MiB
       flush_interval: "10s"
@@ -6874,7 +6898,7 @@ for the factory pattern and complete interface documentation.
 | `loki: url must not contain credentials` | URL has `user:pass@host` | Use `basic_auth` block instead |
 | `loki: basic_auth and bearer_token are mutually exclusive` | Both set | Choose one authentication method |
 | `loki: basic_auth.username must not be empty` | Empty username | Set the username |
-| `loki: tls_cert and tls_key must both be set or both empty` | Only one provided | Provide both cert and key, or neither |
+| `loki: tls.cert and tls.key must both be set or both empty` | Only one provided | Provide both cert and key, or neither |
 | `loki: static label name "X" is invalid` | Label has hyphens/dots/spaces | Use only `[a-zA-Z_][a-zA-Z0-9_]*` |
 | `loki: static label "X" has empty value` | Empty string value | Provide a non-empty value |
 | `loki: static label "X" value contains control characters` | Newlines or other control chars | Remove control characters |
@@ -7229,7 +7253,7 @@ feature-detects at startup and refuses to launch if ACK is disabled
 ## Splunk Cloud Specifics
 
 - **No mTLS.** Splunk Cloud HEC presents a public-CA-signed cert.
-  Setting `tls_cert`/`tls_key`/`tls_ca` with a `splunkcloud://`
+  Setting `tls.cert`/`tls.key`/`tls.ca` with a `splunkcloud://`
   URL is rejected at config validation.
 - **Token visibility.** HEC tokens for Splunk Cloud must be created
   in the Splunk Cloud Web UI (not via REST API) for some
@@ -7268,7 +7292,9 @@ exhaustive field documentation. The most-frequently-used fields:
 | `ack_mode` | `off` | `off` / `best_effort` / `required` |
 | `ack_poll_interval` | `5s` | How often to poll `/services/collector/ack` |
 | `ack_resend_window` | `60s` | Required-mode resend timer |
-| `tls_policy.allow_tls12` | `false` | Required for some legacy Splunk Enterprise builds |
+| `tls.allow_tls12` | `false` | Required for some legacy Splunk Enterprise builds. See [Per-Output TLS in output-configuration.md](output-configuration.md#per-output-tls) for the full `tls:` block. |
+| `allow_insecure_http` | `false` | Permit `http://` URLs. **MUST NOT** be `true` in production. Top-level — not TLS. |
+| `allow_private_ranges` | `false` | Allow private/loopback IP ranges (disables SSRF protection). Top-level — not TLS. |
 | `verify_on_startup` | `true` | Run `/services/collector/health` probe at construction |
 
 ---
@@ -7385,7 +7411,7 @@ against the generated reference TA; it is gated by the
 | Error | Cause | Fix |
 |---|---|---|
 | `ErrConfigInvalid: URL scheme http is rejected unless AllowInsecureHTTP=true` | `http://` URL configured | Use `https://`, or set `allow_insecure_http: true` for development. |
-| `ErrConfigInvalid: splunkcloud:// does not support custom TLS material` | `splunkcloud://` + `tls_cert`/`tls_key`/`tls_ca` set | Remove the TLS material — Splunk Cloud uses public-CA TLS. |
+| `ErrConfigInvalid: splunkcloud:// does not support custom TLS material` | `splunkcloud://` + `tls.cert`/`tls.key`/`tls.ca` set | Remove the TLS material — Splunk Cloud uses public-CA TLS. |
 | `ErrConfigInvalid: Token must not start with "Splunk "` | Token includes the auth-scheme prefix | Strip the prefix from your token value; the library adds it. |
 | `ErrHealthCheckFailed` | `/services/collector/health` returned non-200 at startup | Verify the HEC port is reachable, the token is valid, and the SSL mode matches (`SPLUNK_HEC_SSL` server setting). |
 | `ErrAckDisabled` | `ack_mode != off` but the token's channel has ACK disabled | Enable ACK on the HEC token in Splunk Web. |
@@ -9305,8 +9331,10 @@ The YAML approach eliminates the `secrets/openbao` import, the manual
 assembly. Provider config becomes an ops concern, not a code change.
 
 The YAML field names use `snake_case` equivalents of the Go struct
-fields (e.g. `allow_insecure_http` for `AllowInsecureHTTP`, `tls_ca`
-for `TLSCA`).
+fields (e.g. `allow_insecure_http` for `AllowInsecureHTTP`). TLS
+configuration lives under a nested `tls:` block (`tls.ca`,
+`tls.cert`, `tls.key`, `tls.allow_tls12`, `tls.allow_weak_ciphers`),
+not as flat top-level keys.
 
 Only environment variable substitution (`${VAR}`) is applied in the
 `secrets:` section — `ref+` secret references are NOT resolved, since
@@ -9526,8 +9554,9 @@ ref+ URI (via `extractAndResolveEnabled`), but the resolved value
 MUST be a valid boolean string (`true`, `false`, `1`, `0`).
 
 All other string values in the YAML tree -- including `app_name`,
-`host`, `timezone`, `standard_fields`, `logger` settings, and
-`tls_policy` -- support ref+ URIs when a provider is registered.
+`host`, `timezone`, `standard_fields`, `logger` settings, and the
+per-output `tls:` block -- support ref+ URIs when a provider is
+registered.
 
 ## Caching Behaviour
 
@@ -9870,7 +9899,7 @@ audit: output config validation failed: duplicate secret provider for scheme "op
 | `openbao: address must use https (got "http")` | Non-HTTPS address |
 | `openbao: address must not contain embedded credentials` | URL contains `user:pass@` |
 | `openbao: token is required` | `Config.Token` is empty |
-| `openbao: tls_cert and tls_key must both be set or both empty` | Only one of `TLSCert`/`TLSKey` provided |
+| `openbao: tls.cert and tls.key must both be set or both empty` | Only one of `TLSCert`/`TLSKey` provided |
 
 The `vault` provider returns identical errors with a `vault:` prefix.
 
@@ -11687,9 +11716,10 @@ Before shipping a custom provider, verify each item:
       `https://`. The library's existing providers refuse
       `http://` unless `AllowInsecureHTTP: true` is explicitly
       set in the provider config (dev-only knob).
-- [ ] **TLS policy** — surface `tls_policy` in your provider's
-      config (allowed minimum version, allowed cipher suites,
-      CA file). Reuse `audit.TLSPolicy` from the core module so
+- [ ] **TLS configuration** — surface a `tls:` sub-block in your
+      provider's YAML schema grouping cert material (`ca`, `cert`,
+      `key`) and policy flags (`allow_tls12`, `allow_weak_ciphers`)
+      together. Reuse `audit.TLSPolicy` from the core module so
       your provider's TLS stance is consistent with the outputs.
 - [ ] **SSRF protection** — if your provider talks to an
       HTTP backend, install `audit.NewSSRFDialControl()` on the
@@ -12483,10 +12513,10 @@ server is unreachable, `New()` (or `outputconfig.Load()`) fails.
 |-------|-----|
 | **Server not running** | Start the syslog server before the application |
 | **Wrong address/port** | Check `syslog.address` in your output YAML |
-| **TLS certificate mismatch** | Verify `tls_ca` points to the correct CA that signed the server's certificate |
-| **mTLS client cert rejected** | Verify `tls_cert` and `tls_key` are valid and accepted by the server |
+| **TLS certificate mismatch** | Verify `tls.ca` points to the correct CA that signed the server's certificate |
+| **mTLS client cert rejected** | Verify `tls.cert` and `tls.key` are valid and accepted by the server |
 | **Firewall blocking** | Check network connectivity to the syslog address and port |
-| **TLS version mismatch** | If the server only supports TLS 1.2, set `tls_policy.allow_tls12: true` |
+| **TLS version mismatch** | If the server only supports TLS 1.2, set `tls.allow_tls12: true` |
 
 After startup, TCP and TLS connections are re-established
 automatically on failure (up to `max_retries` attempts, default: 10).
@@ -12521,7 +12551,7 @@ values at construction and rejects CRLF injection. Common patterns:
 | **Bearer token** | `Authorization: "Bearer ${WEBHOOK_TOKEN}"` | Most common for SaaS receivers (Datadog, Splunk HEC, etc.). |
 | **Basic auth** | `Authorization: "Basic ${WEBHOOK_BASIC_B64}"` | Pre-encode `user:pass` as base64 outside the YAML so the secret is not literal. |
 | **API key header** | `X-API-Key: "${WEBHOOK_API_KEY}"` | The vendor's docs will name the header; common names: `X-Api-Key`, `X-Auth-Token`, `Apikey`. |
-| **mTLS** | (no `headers:` entry) — use `tls_ca`, `tls_client_cert`, `tls_client_key` | The webhook output's TLS block presents a client certificate. See [Output Configuration](output-configuration.md). |
+| **mTLS** | (no `headers:` entry) — use `tls.ca`, `tls.cert`, `tls.key` | The webhook output's `tls:` block presents a client certificate. See [Output Configuration](output-configuration.md). |
 | **HMAC body signature** | `X-Signature: "..."` — must be computed per request | The library does NOT sign request bodies. For receivers that require per-body HMAC (e.g. GitHub-style `X-Hub-Signature-256`), front the audit webhook with a small signing reverse-proxy that wraps each request, or open an issue if first-class support would help your use case. |
 | **Custom / vendor-specific** | Any single header value the receiver requires | Use any header name. Validation rejects CRLF/NUL/control-character values. |
 
@@ -13744,7 +13774,7 @@ audit: hmac value malformed
 | `network must be tcp, udp, or tcp+tls` | Invalid transport protocol |
 | `unknown syslog facility` | Facility name not in the standard set |
 | `max_retries N exceeds maximum 20` | `max_retries` > 20 |
-| `tls_cert and tls_key must both be set or both empty` | Only one of cert/key provided |
+| `tls.cert and tls.key must both be set or both empty` | Only one of cert/key provided |
 | `hostname exceeds RFC 5424 maximum` | Hostname > 255 bytes |
 | `invalid byte` in hostname | Hostname contains non-PRINTUSASCII characters |
 

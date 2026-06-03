@@ -89,20 +89,15 @@ type DestinationKeyer interface {
 	DestinationKey() string
 }
 
-// DeliveryReporter is an optional interface that [Output] implementations
-// may satisfy to indicate they handle their own delivery metrics
-// reporting. When satisfied and [DeliveryReporter.ReportsDelivery]
-// returns true, the core auditor skips its default per-event
-// [Metrics.RecordDelivery] calls for that output — the output is
-// responsible for calling them after actual delivery.
+// Note: the deprecated DeliveryReporter interface (which let outputs
+// opt out of core RecordDelivery double-counting) was removed in #894
+// alongside Metrics.RecordDelivery itself. Per-output delivery counts
+// are now derived from [OutputMetrics.RecordFlush] batchSize sums;
+// per-output error counts come from [OutputMetrics.RecordError]
+// (which now takes an event count). See ADR 0005 for the rationale.
 //
-// Not to be confused with [LastDeliveryReporter] — that interface
-// reports a single timestamp for /healthz staleness probes; this
-// one controls per-event metrics dispatch (success / error /
-// filtered).
-type DeliveryReporter interface {
-	ReportsDelivery() bool
-}
+// [LastDeliveryReporter] is unrelated and still supported — it
+// reports a single timestamp for /healthz staleness probes.
 
 // EventMetadata carries per-event context for outputs that need
 // structured access to framework fields (e.g., for Loki labels or
@@ -153,18 +148,21 @@ type MetadataWriter interface {
 // use it to set the request Content-Type header without having to
 // pin themselves to a specific formatter.
 //
-// The library calls SetContentType once at auditor construction
-// time, after each output has been bound to its effective formatter
-// and after [FrameworkFieldSetter.SetFrameworkFields] propagation,
-// but BEFORE any event is dispatched. Outputs that do not care
-// about Content-Type simply omit the method.
+// The library calls SetContentType exactly once per output, at
+// auditor construction time, after each output has been bound to
+// its effective formatter and after
+// [FrameworkFieldSetter.SetFrameworkFields] propagation, but BEFORE
+// any event is dispatched. No other caller MUST invoke this method
+// — it is an auditor-internal extension point, not a runtime
+// configuration knob. Outputs that do not care about Content-Type
+// simply omit the method.
 //
 // Implementations MUST treat SetContentType as a one-shot
-// configuration call from a non-I/O goroutine. Use
-// [sync/atomic.Pointer] or equivalent if a concurrent reader (the
-// output's background write goroutine) could observe the field
-// before the auditor's construction goroutine writes it — otherwise
-// the initialisation is a data race per the Go memory model.
+// configuration call. The first non-empty, valid value wins;
+// subsequent calls (whether from a buggy library or a misuse by an
+// external caller) MUST be no-ops. Use [sync/atomic.Pointer.CompareAndSwap]
+// against a nil sentinel, or equivalent, so the output's background
+// write goroutine observes a stable value with no data race.
 //
 // Implementations SHOULD validate the value (reject empty strings,
 // CRLF, control characters) and return early on bad input rather
@@ -257,9 +255,9 @@ type FrameworkContext struct { //nolint:govet // fieldalignment: readability pre
 // detect silently-failing async outputs whose own buffer is dropping
 // events while the core auditor queue stays low.
 //
-// Not to be confused with [DeliveryReporter] — that interface
-// controls per-event metrics dispatch (success / error / filtered);
-// this one reports a single timestamp for staleness probes.
+// Reports a single timestamp for staleness probes; unrelated to the
+// per-output OutputMetrics surface, which carries the live delivery
+// counters (RecordFlush / RecordError / RecordDrop).
 //
 // LastDeliveryNanos returns the wall-clock nanos of the last
 // successful end-to-end delivery (NOT the moment [Output.Write]

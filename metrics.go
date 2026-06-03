@@ -16,33 +16,6 @@ package audit
 
 import "time"
 
-// EventStatus is the outcome label for a delivery attempt recorded
-// via [Metrics.RecordDelivery]. It is a typed string so consumers can
-// pass it straight to Prometheus / OpenTelemetry label vectors with
-// a zero-cost `string(status)` conversion on the hot path.
-//
-// The underlying string values are a library contract: they are
-// emitted as-is to downstream metric collectors. Existing
-// consumer-side Prometheus queries and alert rules that match on
-// `"success"` / `"error"` continue to work verbatim.
-//
-// Adding a new EventStatus value is a minor-version compatible
-// change. Removing or renaming an existing value is breaking.
-type EventStatus string
-
-// Defined EventStatus values. Production code emits only these two;
-// the set is deliberately minimal because other outcome categories
-// (filtered, dropped, validation failure) have dedicated [Metrics]
-// methods ([Metrics.RecordOutputFiltered], [Metrics.RecordBufferDrop],
-// [Metrics.RecordValidationError]).
-const (
-	// EventSuccess records a successful delivery to an output.
-	EventSuccess EventStatus = "success"
-
-	// EventError records a non-retryable delivery failure.
-	EventError EventStatus = "error"
-)
-
 // Metrics is an optional instrumentation interface that consumers implement
 // to collect audit pipeline telemetry. Pass an implementation via
 // [WithMetrics]; pass nil to disable metrics collection.
@@ -61,23 +34,23 @@ const (
 // [Metrics] records pipeline-level counters that span the entire auditor:
 //
 //   - RecordSubmitted — total events entering the pipeline
-//   - RecordDelivery — per-output delivery outcome (for non-self-reporting outputs)
 //   - RecordBufferDrop — core intake queue overflow
 //   - RecordQueueDepth — core intake queue pressure gauge
 //
-// [OutputMetrics] records per-output buffer operations inside each
-// async output:
+// [OutputMetrics] records per-output buffer and delivery operations
+// inside each async output:
 //
-//   - RecordDrop — per-output buffer overflow
-//   - RecordFlush — per-output batch delivery
-//   - RecordError — per-output non-retryable delivery failure
+//   - RecordDrop(count) — per-output buffer overflow
+//   - RecordFlush(batchSize, dur) — per-output batch delivery
+//   - RecordError(count) — per-output non-retryable delivery failure
 //   - RecordRetry — per-output retry attempt
 //   - RecordQueueDepth — per-output buffer pressure gauge
 //
-// For outputs that implement [DeliveryReporter] (webhook, loki, file,
-// syslog), the output itself calls RecordDelivery after actual delivery.
-// The core auditor skips RecordDelivery for these outputs to avoid
-// phantom success counting.
+// Consumers derive event-level delivery counts from the sum of
+// RecordFlush batchSize values; per-output error counts come from
+// RecordError(count). The pipeline does NOT carry an auditor-wide
+// per-event delivery counter — RecordFlush sums are the canonical
+// "delivered events" signal.
 //
 // # Cardinality guidance
 //
@@ -92,9 +65,9 @@ const (
 // Adding a method to [Metrics] in a v1.x release is a breaking
 // interface change. The library adds new metrics via separate
 // optional interfaces detected by type assertion on the passed
-// [Metrics] value, mirroring the pattern used by [DeliveryReporter]
-// on outputs and by [file.RotationRecorder] / [syslog.ReconnectRecorder]
-// on [OutputMetrics]. Consumers who embed [NoOpMetrics] retain
+// [Metrics] value, mirroring the pattern used by
+// [file.RotationRecorder] / [syslog.ReconnectRecorder] on
+// [OutputMetrics]. Consumers who embed [NoOpMetrics] retain
 // no-op implementations for every base-interface method; extensions
 // are additive. See ADR 0005 (docs/adr/0005-metrics-interface-shape.md)
 // for the full policy.
@@ -106,15 +79,6 @@ type Metrics interface {
 	//
 	// Cardinality: single counter (no labels).
 	RecordSubmitted()
-
-	// RecordDelivery records an event delivery attempt to the named
-	// output. status is a typed enum — see [EventStatus] for the
-	// defined values.
-	//
-	// Cardinality: 2-dimensional vector (output × status).
-	// The output label set is bounded by the number of configured
-	// outputs. status has two values ([EventSuccess], [EventError]).
-	RecordDelivery(output string, status EventStatus)
 
 	// RecordOutputError records a write error on the named output.
 	//
@@ -193,9 +157,6 @@ var _ Metrics = NoOpMetrics{}
 // RecordSubmitted is a no-op.
 func (NoOpMetrics) RecordSubmitted() {}
 
-// RecordDelivery is a no-op.
-func (NoOpMetrics) RecordDelivery(string, EventStatus) {}
-
 // RecordOutputError is a no-op.
 func (NoOpMetrics) RecordOutputError(string) {}
 
@@ -237,17 +198,26 @@ func (NoOpMetrics) RecordQueueDepth(int, int) {}
 //
 // Consumers SHOULD embed [NoOpOutputMetrics] for forward compatibility.
 type OutputMetrics interface {
-	// RecordDrop records that an event was dropped because the
-	// output's internal async buffer was full.
-	RecordDrop()
+	// RecordDrop records that count events were dropped because the
+	// output's internal async buffer was full. count MUST be >= 1.
+	// Outputs that drop one event at a time SHOULD call
+	// RecordDrop(1); batch-aware drop paths SHOULD pass the precise
+	// event count.
+	RecordDrop(count int)
 
 	// RecordFlush records a successful batch flush to the output
 	// destination. batchSize is the number of events in the batch.
 	// dur is the wall-clock time of the flush operation.
+	//
+	// Consumers derive the auditor-wide "events delivered" counter
+	// by summing batchSize across all RecordFlush calls.
 	RecordFlush(batchSize int, dur time.Duration)
 
-	// RecordError records a non-retryable delivery error.
-	RecordError()
+	// RecordError records count events that failed delivery with a
+	// non-retryable error. count MUST be >= 1. Outputs that report
+	// per-batch errors SHOULD pass len(batch); outputs that report
+	// per-event errors SHOULD call RecordError(1).
+	RecordError(count int)
 
 	// RecordRetry records a retry attempt. attempt is 1-indexed:
 	// 1 means first retry (second delivery attempt), 2 means second
@@ -284,13 +254,13 @@ type NoOpOutputMetrics struct{}
 var _ OutputMetrics = NoOpOutputMetrics{}
 
 // RecordDrop is a no-op.
-func (NoOpOutputMetrics) RecordDrop() {}
+func (NoOpOutputMetrics) RecordDrop(int) {}
 
 // RecordFlush is a no-op.
 func (NoOpOutputMetrics) RecordFlush(int, time.Duration) {}
 
 // RecordError is a no-op.
-func (NoOpOutputMetrics) RecordError() {}
+func (NoOpOutputMetrics) RecordError(int) {}
 
 // RecordRetry is a no-op.
 func (NoOpOutputMetrics) RecordRetry(int) {}

@@ -458,11 +458,21 @@ func TestRun_VersionFlag(t *testing.T) {
 // TaxonomyAccepted: the audit-gen wrapper goes through file I/O +
 // parse + codegen, a separate path the library test does not exercise.
 func TestRun_LargeTaxonomyAccepted(t *testing.T) {
-	t.Parallel()
-
-	const eventCount = 20000
+	// No t.Parallel — this test does end-to-end file I/O + parse + codegen +
+	// gofmt over a multi-hundred-KiB generated source. Running it serialised
+	// against the 58 small parallel tests is materially faster on CI runners
+	// than racing them all under -race.
+	//
+	// The size assertion is intentionally lower than the >1 MiB cap that
+	// taxonomy_yaml_test.go locks in for the library-side ParseTaxonomyYAML
+	// path. The audit-gen wrapper's unique value is "wrapper exits 0 +
+	// produces non-empty Go" — the >1 MiB taxonomy parsing AC lives in
+	// taxonomy_yaml_test.go:153 (1 MiB) and taxonomy_yaml_test.go:168
+	// (10 MiB), neither of which runs format.Source on a generated source
+	// (the gofmt-on-100k-AST-nodes cost was the audit-gen CI timeout cause).
+	const eventCount = 3000
 	data := testhelper.BuildLargeTaxonomyYAML(eventCount, false)
-	require.Greater(t, len(data), 1<<20, "fixture must exceed the old 1 MiB cap")
+	require.Greater(t, len(data), 200_000, "fixture must exercise the wrapper end-to-end")
 
 	big := filepath.Join(t.TempDir(), "big.yaml")
 	require.NoError(t, os.WriteFile(big, data, 0o600))
@@ -475,7 +485,7 @@ func TestRun_LargeTaxonomyAccepted(t *testing.T) {
 		"-package", "mypkg",
 	}, &stdout, &stderr)
 	assert.Equal(t, exitSuccess, code, "stderr: %s", stderr.String())
-	assert.Greater(t, stdout.Len(), 1<<20, "generated output should reflect the large taxonomy")
+	assert.Greater(t, stdout.Len(), 200_000, "generated output should reflect the taxonomy")
 }
 
 func TestRun_UnwritableOutput(t *testing.T) {
@@ -1287,7 +1297,10 @@ events:
 // that the template scales to realistic enterprise taxonomies.
 // (#565 G9).
 func TestGenerate_VeryLargeTaxonomy(t *testing.T) {
-	t.Parallel()
+	// No t.Parallel — see TestRun_LargeTaxonomyAccepted for the rationale.
+	// This test's specific wall-time driver: format.Source on the ~75-100 KiB
+	// generated source from the 1000-event template expansion dominates under
+	// -race when racing the 58 small parallel tests.
 	var sb strings.Builder
 	sb.WriteString("version: 1\ncategories:\n  bulk:\n")
 	for i := 0; i < 1000; i++ {

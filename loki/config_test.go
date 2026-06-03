@@ -135,7 +135,7 @@ func TestValidateConfig(t *testing.T) {
 				URL:     "https://loki.example.com/loki/api/v1/push",
 				TLSCert: "/tmp/client.crt",
 			},
-			wantErr: "tls_cert and tls_key must both be set or both empty",
+			wantErr: "tls.cert and tls.key must both be set or both empty",
 		},
 		{
 			name: "tls_key without tls_cert rejected",
@@ -143,7 +143,7 @@ func TestValidateConfig(t *testing.T) {
 				URL:    "https://loki.example.com/loki/api/v1/push",
 				TLSKey: "/tmp/client.key",
 			},
-			wantErr: "tls_cert and tls_key must both be set or both empty",
+			wantErr: "tls.cert and tls.key must both be set or both empty",
 		},
 		{
 			name: "tls_cert and tls_key both set accepted at validation stage",

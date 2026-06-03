@@ -33,10 +33,10 @@ func TestOutputMetricsRecorder_AllMethods(t *testing.T) {
 	t.Parallel()
 	m := audittest.NewOutputMetricsRecorder()
 
-	m.RecordDrop()
-	m.RecordDrop()
+	m.RecordDrop(1)
+	m.RecordDrop(1)
 	m.RecordFlush(10, 5*time.Millisecond)
-	m.RecordError()
+	m.RecordError(1)
 	m.RecordRetry(1)
 	m.RecordRetry(2)
 	m.RecordQueueDepth(5, 100) // no-op, should not panic
@@ -51,9 +51,9 @@ func TestOutputMetricsRecorder_Reset(t *testing.T) {
 	t.Parallel()
 	m := audittest.NewOutputMetricsRecorder()
 
-	m.RecordDrop()
+	m.RecordDrop(1)
 	m.RecordFlush(5, time.Millisecond)
-	m.RecordError()
+	m.RecordError(1)
 	m.RecordRetry(1)
 
 	m.Reset()

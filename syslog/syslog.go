@@ -39,7 +39,6 @@ var (
 	_ audit.Output           = (*Output)(nil)
 	_ audit.DestinationKeyer = (*Output)(nil)
 	_ audit.MetadataWriter   = (*Output)(nil)
-	_ audit.DeliveryReporter = (*Output)(nil)
 )
 
 // dropWarnInterval is the minimum interval between slog.Warn calls
@@ -424,7 +423,7 @@ func (s *Output) enqueue(data []byte, priority srslog.Priority) error {
 				"max_event_bytes", s.maxEventBytes,
 				"dropped", dropped)
 		})
-		s.outputMetrics.RecordDrop()
+		s.outputMetrics.RecordDrop(1)
 		return fmt.Errorf("%w: %w: event size %d exceeds max_event_bytes %d",
 			audit.ErrValidation, audit.ErrEventTooLarge, len(data), s.maxEventBytes)
 	}
@@ -441,7 +440,7 @@ func (s *Output) enqueue(data []byte, priority srslog.Priority) error {
 				"dropped", dropped,
 				"buffer_size", cap(s.ch))
 		})
-		s.outputMetrics.RecordDrop()
+		s.outputMetrics.RecordDrop(1)
 		return nil // non-blocking — do not return error to drain goroutine
 	}
 }
@@ -486,11 +485,6 @@ func (s *Output) Close() error {
 	}
 	return nil
 }
-
-// ReportsDelivery returns true, indicating that Output reports its
-// own delivery metrics from the background writeLoop after actual
-// syslog delivery, not from the Write enqueue path.
-func (s *Output) ReportsDelivery() bool { return true }
 
 // Name returns the human-readable identifier for this output.
 func (s *Output) Name() string {
@@ -644,7 +638,7 @@ func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error, om audit.
 			"address", s.address,
 			"failures", s.failures,
 			"last_error", writeErr)
-		om.RecordError()
+		om.RecordError(1)
 		return
 	}
 
@@ -726,13 +720,13 @@ func (s *Output) retryAfterReconnect(entry syslogEntry, om audit.OutputMetrics) 
 	if w == nil {
 		s.logger.Error("audit: output syslog: writer nil after successful reconnect",
 			"address", s.address)
-		om.RecordError()
+		om.RecordError(1)
 		return false
 	}
 	if _, err := w.WriteWithPriority(entry.priority, entry.data); err != nil {
 		s.logger.Error("audit: output syslog: delivery failed after reconnect",
 			"error", err)
-		om.RecordError()
+		om.RecordError(1)
 		return false
 	}
 	return true

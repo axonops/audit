@@ -401,8 +401,10 @@ The YAML approach eliminates the `secrets/openbao` import, the manual
 assembly. Provider config becomes an ops concern, not a code change.
 
 The YAML field names use `snake_case` equivalents of the Go struct
-fields (e.g. `allow_insecure_http` for `AllowInsecureHTTP`, `tls_ca`
-for `TLSCA`).
+fields (e.g. `allow_insecure_http` for `AllowInsecureHTTP`). TLS
+configuration lives under a nested `tls:` block (`tls.ca`,
+`tls.cert`, `tls.key`, `tls.allow_tls12`, `tls.allow_weak_ciphers`),
+not as flat top-level keys.
 
 Only environment variable substitution (`${VAR}`) is applied in the
 `secrets:` section — `ref+` secret references are NOT resolved, since
@@ -622,8 +624,9 @@ ref+ URI (via `extractAndResolveEnabled`), but the resolved value
 MUST be a valid boolean string (`true`, `false`, `1`, `0`).
 
 All other string values in the YAML tree -- including `app_name`,
-`host`, `timezone`, `standard_fields`, `logger` settings, and
-`tls_policy` -- support ref+ URIs when a provider is registered.
+`host`, `timezone`, `standard_fields`, `logger` settings, and the
+per-output `tls:` block -- support ref+ URIs when a provider is
+registered.
 
 ## Caching Behaviour
 
@@ -966,7 +969,7 @@ audit: output config validation failed: duplicate secret provider for scheme "op
 | `openbao: address must use https (got "http")` | Non-HTTPS address |
 | `openbao: address must not contain embedded credentials` | URL contains `user:pass@` |
 | `openbao: token is required` | `Config.Token` is empty |
-| `openbao: tls_cert and tls_key must both be set or both empty` | Only one of `TLSCert`/`TLSKey` provided |
+| `openbao: tls.cert and tls.key must both be set or both empty` | Only one of `TLSCert`/`TLSKey` provided |
 
 The `vault` provider returns identical errors with a `vault:` prefix.
 

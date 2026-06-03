@@ -48,7 +48,6 @@ const dropWarnInterval = 10 * time.Second
 // Compile-time assertions.
 var (
 	_ audit.Output            = (*Output)(nil)
-	_ audit.DeliveryReporter  = (*Output)(nil)
 	_ audit.DestinationKeyer  = (*Output)(nil)
 	_ audit.ContentTypeSetter = (*Output)(nil)
 )
@@ -178,8 +177,9 @@ type Output struct {
 // Optional [Option] arguments tune construction-time behaviour:
 //   - [WithDiagnosticLogger] routes TLS-policy and runtime warnings
 //   - [WithOutputMetrics] supplies the per-output counters sink
-//   - [WithCoreMetrics] supplies the auditor-wide [audit.Metrics] sink
-//     (the background goroutine calls RecordDelivery after each POST)
+//   - [WithCoreMetrics] supplies the auditor-wide [audit.Metrics]
+//     sink (pipeline-wide RecordOutputError + other counters; per-
+//     event delivery counts flow through OutputMetrics.RecordFlush)
 //
 // All options are optional; the zero-value configuration constructs a
 // fully functional output with no instrumentation.
@@ -284,11 +284,11 @@ func (w *Output) Write(data []byte) error {
 				"max_event_bytes", w.maxEventBytes,
 				"dropped", dropped)
 		})
-		// Drops are counted once via per-output OutputMetrics.RecordDrop
-		// only — not via pipeline-level Metrics.RecordDelivery. This
-		// matches file + syslog behaviour for consistency across all
-		// self-reporting outputs (B-25).
-		w.outputMetrics.RecordDrop()
+		// Drops are counted via per-output OutputMetrics.RecordDrop.
+		// Since #894 removed Metrics.RecordDelivery, drops are
+		// reported only on this surface — no pipeline-wide
+		// double-counting risk.
+		w.outputMetrics.RecordDrop(1)
 		return fmt.Errorf("%w: %w: event size %d exceeds max_event_bytes %d",
 			audit.ErrValidation, audit.ErrEventTooLarge, len(data), w.maxEventBytes)
 	}
@@ -307,7 +307,7 @@ func (w *Output) Write(data []byte) error {
 		})
 		// Drops are counted via per-output OutputMetrics.RecordDrop
 		// only — see B-25 note above.
-		w.outputMetrics.RecordDrop()
+		w.outputMetrics.RecordDrop(1)
 		return nil // non-blocking — do not return error to drain goroutine
 	}
 }
@@ -351,11 +351,6 @@ func (w *Output) Close() error {
 	return nil
 }
 
-// ReportsDelivery returns true, indicating that Output reports
-// its own delivery metrics from the batch goroutine after actual HTTP
-// delivery, not from the Write enqueue path.
-func (w *Output) ReportsDelivery() bool { return true }
-
 // LastDeliveryNanos returns the wall-clock UnixNano of the most recent
 // HTTP 2xx response, or 0 if no batch has yet been delivered. Updated
 // from the batch goroutine after the server confirms receipt — failed
@@ -365,24 +360,28 @@ func (w *Output) LastDeliveryNanos() int64 {
 	return w.lastDeliveryNanos.Load()
 }
 
-// SetContentType implements [audit.ContentTypeSetter]. The auditor
-// calls this once at construction time with the result of
-// [audit.Formatter.ContentType] from the effective per-output
-// formatter, before any event is dispatched.
+// SetContentType implements [audit.ContentTypeSetter]. The library
+// calls this exactly once, at auditor construction time, with the
+// MIME type returned by the effective formatter's
+// [audit.Formatter.ContentType]. Subsequent calls are no-ops — the
+// first non-empty, valid value wins.
 //
-// Validation rejects (silently — auditor construction continues):
+// This method is for auditor-internal use only. Consumers
+// constructing [Output] directly (e.g., in unit tests) MUST NOT
+// call SetContentType; set [Config.Headers] with a "Content-Type"
+// entry if the formatter MIME type must be overridden at the HTTP
+// transport level.
+//
+// Validation rejects (logged at Warn, then ignored — the first
+// non-rejected value wins via atomic CompareAndSwap from nil):
 //   - empty strings
 //   - values exceeding [maxContentTypeLen]
 //   - any string failing [net/http/internal/ascii.IsPrint] equivalent
 //     validation against the [RFC 9110] field-value grammar
 //     (i.e., contains CR, LF, NUL, or non-printable bytes).
 //
-// A rejected value leaves the previous Content-Type in place (or
-// [defaultContentType] if SetContentType has never been called).
-// This protects against a hostile or misbehaving formatter — the
-// HTTP transport would reject the malformed value at request-send
-// time anyway, but failing early at construction surfaces the bug
-// in a single log line rather than per-request errors.
+// Concurrency: safe to call from any goroutine. The value is
+// observable atomically by the batch loop on the next request.
 //
 // Operator override: a `Content-Type` entry in the output's
 // `headers` config (passed via [Config.Headers]) takes precedence
@@ -392,11 +391,19 @@ func (w *Output) LastDeliveryNanos() int64 {
 // to a strict CEF receiver can still do so.
 func (w *Output) SetContentType(ct string) {
 	if ct == "" || len(ct) > maxContentTypeLen || !isValidContentType(ct) {
-		w.logger.Warn("audit: output webhook: rejected invalid Content-Type from formatter",
+		// Warn message drops "from formatter" attribution: the
+		// interface contract (no caller but the auditor) does not
+		// guarantee the source, and the message should not lie if a
+		// misuser invokes this with garbage.
+		w.logger.Warn("audit: output webhook: rejected invalid Content-Type",
 			"value_length", len(ct))
 		return
 	}
-	w.contentType.Store(&ct)
+	// First non-nil write wins; subsequent calls become silent no-ops.
+	// Enforces the one-shot contract documented in
+	// [audit.ContentTypeSetter] structurally, not by hoping the
+	// auditor calls it once.
+	w.contentType.CompareAndSwap(nil, &ct)
 }
 
 // effectiveContentType returns the Content-Type to use on the

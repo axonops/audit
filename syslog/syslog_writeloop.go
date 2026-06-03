@@ -201,7 +201,7 @@ func (s *Output) writeEntry(entry syslogEntry) {
 			s.logger.Error("audit: output syslog: panic recovered",
 				"panic", r,
 				"stack", string(buf[:n]))
-			om.RecordError()
+			om.RecordError(1)
 		}
 	}()
 
@@ -287,7 +287,7 @@ func (s *Output) drainOne(entry syslogEntry) {
 			s.logger.Error("audit: output syslog: panic recovered during drain",
 				"panic", r,
 				"stack", string(buf[:n]))
-			om.RecordError()
+			om.RecordError(1)
 		}
 	}()
 
@@ -300,7 +300,7 @@ func (s *Output) drainOne(entry syslogEntry) {
 	if _, err := w.WriteWithPriority(entry.priority, entry.data); err != nil {
 		s.logger.Error("audit: output syslog: delivery failed during drain",
 			"error", err)
-		om.RecordError()
+		om.RecordError(1)
 		return
 	}
 	s.recordSuccess(om, 1, time.Since(start))

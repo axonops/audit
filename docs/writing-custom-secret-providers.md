@@ -438,9 +438,10 @@ Before shipping a custom provider, verify each item:
       `https://`. The library's existing providers refuse
       `http://` unless `AllowInsecureHTTP: true` is explicitly
       set in the provider config (dev-only knob).
-- [ ] **TLS policy** — surface `tls_policy` in your provider's
-      config (allowed minimum version, allowed cipher suites,
-      CA file). Reuse `audit.TLSPolicy` from the core module so
+- [ ] **TLS configuration** — surface a `tls:` sub-block in your
+      provider's YAML schema grouping cert material (`ca`, `cert`,
+      `key`) and policy flags (`allow_tls12`, `allow_weak_ciphers`)
+      together. Reuse `audit.TLSPolicy` from the core module so
       your provider's TLS stance is consistent with the outputs.
 - [ ] **SSRF protection** — if your provider talks to an
       HTTP backend, install `audit.NewSSRFDialControl()` on the

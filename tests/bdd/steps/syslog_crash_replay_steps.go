@@ -104,11 +104,14 @@ func registerSyslogCrashReplaySteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 		m := tc.MockMetrics
 		submitted := m.Submitted
 
+		// #894: per-event RecordDelivery was deleted; delivered events
+		// now come from the recording mock output or the OutputMetrics
+		// RecordFlush count.
 		var delivered int
-		for k, v := range m.Events {
-			if len(k) > 8 && k[len(k)-8:] == ":success" {
-				delivered += v
-			}
+		if tc.RecordingOutput != nil {
+			delivered = tc.RecordingOutput.eventCount()
+		} else if tc.OutputMetricsMock != nil {
+			delivered = tc.OutputMetricsMock.FlushCount()
 		}
 		outputErrors := 0
 		for _, v := range m.OutputErrors {

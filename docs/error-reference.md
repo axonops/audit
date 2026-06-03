@@ -298,7 +298,7 @@ audit: hmac value malformed
 | `network must be tcp, udp, or tcp+tls` | Invalid transport protocol |
 | `unknown syslog facility` | Facility name not in the standard set |
 | `max_retries N exceeds maximum 20` | `max_retries` > 20 |
-| `tls_cert and tls_key must both be set or both empty` | Only one of cert/key provided |
+| `tls.cert and tls.key must both be set or both empty` | Only one of cert/key provided |
 | `hostname exceeds RFC 5424 maximum` | Hostname > 255 bytes |
 | `invalid byte` in hostname | Hostname contains non-PRINTUSASCII characters |
 

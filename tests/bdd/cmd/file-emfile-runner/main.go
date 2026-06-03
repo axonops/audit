@@ -58,10 +58,10 @@ type errorCounter struct {
 	errors int
 }
 
-func (e *errorCounter) RecordError() {
+func (e *errorCounter) RecordError(count int) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.errors++
+	e.errors += count
 }
 
 func (e *errorCounter) count() int {

@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -31,19 +32,35 @@ import (
 // slowMockOutput is an audit.Output whose Write blocks for `delay`
 // then returns nil. Used to test that synchronous delivery makes the
 // caller's AuditEvent block for the duration of the slowest output's
-// Write call.
+// Write call. eventsWritten counts successful Writes so the delivery
+// accounting invariant scenarios (#894 — Metrics.RecordDelivery
+// removed) can read delivered-event totals directly.
 type slowMockOutput struct {
-	delay time.Duration
+	delay         time.Duration
+	mu            sync.Mutex
+	eventsWritten int
 }
 
 func (s *slowMockOutput) Write(_ []byte) error {
 	// scenario-control delay (#559): deliberate per-write delay to
 	// exercise sync-delivery blocking semantics — not synchronisation.
 	time.Sleep(s.delay)
+	s.mu.Lock()
+	s.eventsWritten++
+	s.mu.Unlock()
 	return nil
 }
 func (s *slowMockOutput) Close() error { return nil }
 func (s *slowMockOutput) Name() string { return "slow-output" }
+
+// eventCount satisfies recordingOutputCounter (#894) so the
+// delivery accounting invariant scenarios can read delivered-event
+// totals directly from the slow output.
+func (s *slowMockOutput) eventCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.eventsWritten
+}
 
 // registerSyncDeliverySteps registers BDD step definitions for #549
 // (synchronous-delivery feature file). The 4 step phrases below are

@@ -226,14 +226,14 @@ NDJSON is:
 | `timeout` | duration | `"10s"` | — | HTTP request timeout (full request/response lifecycle) |
 | `max_retries` | int | `3` | 0–20 | Retry count for 5xx and 429 responses. 0 defaults to 3. Values > 20 rejected |
 | `headers` | map | *(none)* | — | Custom HTTP headers on every request |
-| `tls_ca` | string | *(none)* | — | Path to CA certificate for server verification |
-| `tls_cert` | string | *(none)* | — | Path to client certificate for mTLS |
-| `tls_key` | string | *(none)* | — | Path to client private key for mTLS |
-| `tls_policy` | object | *(nil — TLS 1.3 only)* | — | TLS version and cipher policy |
-| `tls_policy.allow_tls12` | bool | `false` | — | Allow TLS 1.2 fallback |
-| `tls_policy.allow_weak_ciphers` | bool | `false` | — | Allow weaker cipher suites with TLS 1.2 |
-| `allow_insecure_http` | bool | `false` | — | Permit `http://` URLs. MUST NOT be true in production |
-| `allow_private_ranges` | bool | `false` | — | Disable SSRF protection for private/loopback ranges |
+| `tls` | object | *(none — TLS 1.3 only)* | — | TLS configuration block. Groups cert material and policy flags |
+| `tls.ca` | string | *(none)* | — | Path to CA certificate for server verification |
+| `tls.cert` | string | *(none)* | — | Path to client certificate for mTLS |
+| `tls.key` | string | *(none)* | — | Path to client private key for mTLS |
+| `tls.allow_tls12` | bool | `false` | — | Allow TLS 1.2 fallback |
+| `tls.allow_weak_ciphers` | bool | `false` | — | Allow weaker cipher suites with TLS 1.2 |
+| `allow_insecure_http` | bool | `false` | — | Permit `http://` URLs. MUST NOT be true in production. Top-level — not TLS |
+| `allow_private_ranges` | bool | `false` | — | Disable SSRF protection for private/loopback ranges. Top-level — not TLS |
 | `verify_on_startup` | bool | `true` | `true` or `false` | When `true` (default), `New()` performs a TCP dial — and, for `https://` URLs, a TLS handshake — against the webhook endpoint before returning, so a misconfigured or unreachable destination fails fast at startup rather than silently dropping events at the first flush. Set to `false` for sidecar/lazy-start deployments where the receiver may not yet be running when the application starts; the runtime retry path handles delivery once the receiver becomes available. The probe applies the SAME SSRF policy as the runtime transport: `allow_private_ranges: false` rejects loopback / RFC 1918 at probe time too. |
 | `verify_on_startup_timeout` | duration | `5s` | any positive duration | Bounds the construction-time probe. Independent of `timeout` (which governs runtime requests). Operators on slow WAN paths can raise this; CI/local development is fine with the default. Ignored when `verify_on_startup: false`. |
 
@@ -244,7 +244,7 @@ NDJSON is:
 - HTTPS is required unless `allow_insecure_http` is true
 - URL MUST NOT contain embedded credentials (use `headers` instead)
 - Header names and values MUST NOT contain CRLF characters
-- `tls_cert` and `tls_key` MUST both be set or both empty
+- `tls.cert` and `tls.key` MUST both be set or both empty
 - `batch_size`, `buffer_size`, `max_retries` are rejected if above
   their upper bounds
 
@@ -290,7 +290,8 @@ webhook:
 ```yaml
 webhook:
   url: "https://ingest.example.com/audit"
-  tls_ca: "/etc/audit/ca.pem"
+  tls:
+    ca: "/etc/audit/ca.pem"
 ```
 
 ### Mutual TLS (mTLS)
@@ -298,9 +299,10 @@ webhook:
 ```yaml
 webhook:
   url: "https://ingest.example.com/audit"
-  tls_ca: "/etc/audit/ca.pem"
-  tls_cert: "/etc/audit/client-cert.pem"
-  tls_key: "/etc/audit/client-key.pem"
+  tls:
+    ca: "/etc/audit/ca.pem"
+    cert: "/etc/audit/client-cert.pem"
+    key: "/etc/audit/client-key.pem"
 ```
 
 ### TLS Version Policy
@@ -308,7 +310,7 @@ webhook:
 ```yaml
 webhook:
   url: "https://legacy-endpoint.internal/audit"
-  tls_policy:
+  tls:
     allow_tls12: true
     allow_weak_ciphers: false
 ```
@@ -502,7 +504,7 @@ Before flipping either flag in production, the operator MUST:
 1. Document the specific receiver address and rationale in the
    deployment's Terraform / Helm / Kubernetes manifest comment.
 2. Set the receiver behind authentication (`headers.Authorization`
-   or mTLS — `tls_cert` + `tls_key`) so that the relaxed network
+   or mTLS — `tls.cert` + `tls.key`) so that the relaxed network
    posture does not become an open egress for arbitrary callers.
 3. Pin the receiver host in NetworkPolicy / egress firewall rules
    to limit the blast radius if the URL is ever templated from
@@ -539,7 +541,8 @@ outputs:
       flush_interval: "2s"
       timeout: "30s"
       max_retries: 5
-      tls_ca: "/etc/audit/tls/ca.pem"
+      tls:
+        ca: "/etc/audit/tls/ca.pem"
 ```
 
 ### Multi-Destination Configuration

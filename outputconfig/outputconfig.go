@@ -613,13 +613,14 @@ func parseTopLevel(ctx context.Context, doc, orderedOutputs yaml.MapSlice, order
 		case "logger":
 			return nil, fmt.Errorf("%w: unknown top-level key %q (renamed to %q in this version)",
 				ErrOutputConfigInvalid, "logger", "auditor")
-		case "tls_policy":
-			// Removed in #476 (pre-v1.0). TLS policy is now configured
-			// per-output (syslog/webhook/loki) and per-provider
+		case "tls_policy", "tls":
+			// Removed in #476 (pre-v1.0); restructured under each
+			// output's `tls:` block in #894. TLS is now configured
+			// per-output (syslog/webhook/loki/splunk) and per-provider
 			// (vault/openbao). Provide a targeted migration hint so
 			// operators aren't left guessing at a generic "unknown key"
 			// error.
-			return nil, fmt.Errorf("%w: tls_policy is no longer a top-level key; configure tls_policy under each output (syslog, webhook, loki) and each provider (vault, openbao) — see #476",
+			return nil, fmt.Errorf("%w: tls_policy is no longer a top-level key; configure tls under each output (syslog, webhook, loki, splunk) and each provider (vault, openbao) — see #476, #894",
 				ErrOutputConfigInvalid)
 		default:
 			return nil, fmt.Errorf("%w: unknown top-level key %q", ErrOutputConfigInvalid, key)

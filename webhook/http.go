@@ -26,8 +26,6 @@ import (
 	"net/url"
 	"strconv"
 	"time"
-
-	"github.com/axonops/audit"
 )
 
 // maxRetryAfter caps the server-provided Retry-After header to prevent
@@ -105,7 +103,7 @@ func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) {
 			logger.Error("audit: output webhook: non-retryable error",
 				"error", sanitiseClientError(err),
 				"batch_size", len(batch))
-			om.RecordError()
+			om.RecordError(len(batch))
 			w.recordDrop(len(batch))
 			return
 		}
@@ -121,7 +119,7 @@ func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) {
 	logger.Error("audit: output webhook: retries exhausted, dropping batch",
 		"batch_size", len(batch),
 		"max_retries", w.maxRetries)
-	om.RecordError()
+	om.RecordError(len(batch))
 	w.recordDrop(len(batch))
 }
 
@@ -219,32 +217,21 @@ func parseRetryAfter(val string) time.Duration {
 }
 
 // recordSuccess records successful delivery metrics for a batch.
+// Per-event delivery counts come from summing OutputMetrics.RecordFlush
+// batchSize values; the auditor no longer carries a per-event
+// pipeline counter.
 func (w *Output) recordSuccess(batchSize int, dur time.Duration) {
 	// Record the wall-clock delivery timestamp for #753
 	// LastDeliveryReporter. Updated AFTER an HTTP 2xx response
 	// returns so retry-exhausted batches leave the timestamp frozen.
 	w.lastDeliveryNanos.Store(time.Now().UnixNano())
 	w.outputMetrics.RecordFlush(batchSize, dur)
-	if w.metrics != nil {
-		name := w.Name()
-		for range batchSize {
-			w.metrics.RecordDelivery(name, audit.EventSuccess)
-		}
-	}
 }
 
 // recordDrop records dropped events in metrics. Called when retries
 // are exhausted or a non-retryable error occurs.
-// RecordDrop is called per dropped event on OutputMetrics.
-// RecordDelivery(name, audit.EventError) is called per dropped event on core Metrics.
 func (w *Output) recordDrop(count int) {
-	name := w.Name()
-	for range count {
-		w.outputMetrics.RecordDrop()
-		if w.metrics != nil {
-			w.metrics.RecordDelivery(name, audit.EventError)
-		}
-	}
+	w.outputMetrics.RecordDrop(count)
 }
 
 // buildNDJSON concatenates event bytes as newline-delimited JSON.

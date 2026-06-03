@@ -63,7 +63,7 @@ func (r *recordingOutputMetrics) RecordFlush(batchSize int, _ time.Duration) {
 	r.flushSum.Add(int64(batchSize))
 }
 
-func (r *recordingOutputMetrics) RecordDrop() { r.drops.Add(1) }
+func (r *recordingOutputMetrics) RecordDrop(count int) { r.drops.Add(int64(count)) }
 
 // newMetricsAuditor builds an audit.Auditor wired to the given
 // splunk output. Mirrors newCIMAuditor but takes the output as an

@@ -80,16 +80,6 @@ func (m *MockMetrics) RecordSubmitted() {
 	m.Submitted++
 }
 
-func (m *MockMetrics) RecordDelivery(output string, status audit.EventStatus) {
-	m.Mu.Lock()
-	defer m.Mu.Unlock()
-	m.Events[output+":"+string(status)]++
-	select {
-	case m.EventCh <- struct{}{}:
-	default:
-	}
-}
-
 func (m *MockMetrics) RecordOutputError(output string) {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
@@ -192,13 +182,6 @@ func (m *MockMetrics) GetOutputFiltered(output string) int {
 	return m.FilteredCount[output]
 }
 
-// GetEventCount returns the count of events for the named output and status.
-func (m *MockMetrics) GetEventCount(output string, status audit.EventStatus) int {
-	m.Mu.Lock()
-	defer m.Mu.Unlock()
-	return m.Events[output+":"+string(status)]
-}
-
 // GetSerializationErrorCount returns the count of serialization errors for the event type.
 func (m *MockMetrics) GetSerializationErrorCount(eventType string) int {
 	m.Mu.Lock()
@@ -268,10 +251,10 @@ type MockOutputMetrics struct { //nolint:govet // fieldalignment: readability pr
 }
 
 // RecordDrop satisfies audit.OutputMetrics.
-func (m *MockOutputMetrics) RecordDrop() {
+func (m *MockOutputMetrics) RecordDrop(count int) {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
-	m.Drops++
+	m.Drops += count
 }
 
 // RecordFlush satisfies audit.OutputMetrics.
@@ -283,10 +266,10 @@ func (m *MockOutputMetrics) RecordFlush(_ int, dur time.Duration) {
 }
 
 // RecordError satisfies audit.OutputMetrics.
-func (m *MockOutputMetrics) RecordError() {
+func (m *MockOutputMetrics) RecordError(count int) {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
-	m.Errors++
+	m.Errors += count
 }
 
 // RecordRetry satisfies audit.OutputMetrics.

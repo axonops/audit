@@ -244,7 +244,7 @@ func registerLokiGivenValidationSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 		return tryCreateLokiOutput(tc, cfg)
 	})
 
-	ctx.Step(`^I try to create a loki output with tls_cert but no tls_key$`, func() error {
+	ctx.Step(`^I try to create a loki output with tls\.cert but no tls\.key$`, func() error {
 		return tryCreateLokiOutput(tc, &loki.Config{
 			URL:     "https://loki.example.com/push",
 			TLSCert: "/tmp/cert.pem",

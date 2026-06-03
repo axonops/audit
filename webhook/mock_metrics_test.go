@@ -18,50 +18,22 @@ package webhook_test
 // themselves. The helpers are the synchronisation primitive every
 // metric-driven test relies on (#705 family fix); a bug here would
 // silently mask flakes elsewhere.
+//
+// Note (#894): the waitForEventCount tests were removed alongside
+// audit.Metrics.RecordDelivery / audit.EventStatus. The remaining
+// OutputMetrics-based waitFor helpers carry the same synchronisation
+// guarantees.
 
 import (
 	"testing"
 	"time"
-
-	"github.com/axonops/audit"
 )
-
-// TestMockMetrics_WaitForEventCount_PredicateAlreadyTrue verifies the
-// helper returns immediately when the count is already at or above
-// the requested level, without sleeping or blocking on Wait.
-func TestMockMetrics_WaitForEventCount_PredicateAlreadyTrue(t *testing.T) {
-	m := newMockMetrics()
-	m.RecordDelivery("out", audit.EventSuccess)
-	m.RecordDelivery("out", audit.EventSuccess)
-
-	start := time.Now()
-	m.waitForEventCount(t, "out", audit.EventSuccess, 2, 5*time.Second)
-	elapsed := time.Since(start)
-	if elapsed > 100*time.Millisecond {
-		t.Fatalf("waitForEventCount blocked unnecessarily: %v", elapsed)
-	}
-}
-
-// TestMockMetrics_WaitForEventCount_BroadcastWakesWaiter verifies a
-// goroutine that records the deciding event after the test goroutine
-// is already blocked in Wait correctly wakes the wait.
-func TestMockMetrics_WaitForEventCount_BroadcastWakesWaiter(t *testing.T) {
-	m := newMockMetrics()
-
-	go func() {
-		// Slight delay so the main goroutine reaches Wait first.
-		time.Sleep(10 * time.Millisecond)
-		m.RecordDelivery("out", audit.EventSuccess)
-	}()
-
-	m.waitForEventCount(t, "out", audit.EventSuccess, 1, 2*time.Second)
-}
 
 // TestMockOutputMetrics_WaitForDrops_PredicateAlreadyTrue mirrors the
 // mockMetrics counterpart for the OutputMetrics waitForDrops helper.
 func TestMockOutputMetrics_WaitForDrops_PredicateAlreadyTrue(t *testing.T) {
 	m := newMockOutputMetrics()
-	m.RecordDrop()
+	m.RecordDrop(1)
 
 	start := time.Now()
 	m.waitForDrops(t, 1, 5*time.Second)
@@ -78,8 +50,8 @@ func TestMockOutputMetrics_WaitForDrops_BroadcastWakesWaiter(t *testing.T) {
 
 	go func() {
 		time.Sleep(10 * time.Millisecond)
-		m.RecordDrop()
-		m.RecordDrop()
+		m.RecordDrop(1)
+		m.RecordDrop(1)
 	}()
 
 	m.waitForDrops(t, 2, 2*time.Second)

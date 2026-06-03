@@ -499,7 +499,7 @@ func validateSyslogHostname(hostname string) error {
 // validateSyslogTLSFiles checks TLS cert/key pairing and file existence.
 func validateSyslogTLSFiles(cfg *Config) error {
 	if (cfg.TLSCert != "") != (cfg.TLSKey != "") {
-		return fmt.Errorf("%w: syslog tls_cert and tls_key must both be set or both empty", audit.ErrConfigInvalid)
+		return fmt.Errorf("%w: syslog: tls.cert and tls.key must both be set or both empty", audit.ErrConfigInvalid)
 	}
 
 	for _, path := range []string{cfg.TLSCert, cfg.TLSKey, cfg.TLSCA} {

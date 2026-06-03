@@ -29,13 +29,24 @@ HMAC, and Grafana dashboards, see [Example 17 — Capstone](../21-capstone/).
 
 | Metric | Type | Labels |
 |---|---|---|
-| `audit_events_total` | Counter | `output`, `status` |
 | `audit_output_errors_total` | Counter | `output` |
 | `audit_output_filtered_total` | Counter | `output` |
 | `audit_validation_errors_total` | Counter | `event_type` |
 | `audit_filtered_total` | Counter | `event_type` |
 | `audit_serialization_errors_total` | Counter | `event_type` |
 | `audit_buffer_drops_total` | Counter | (none) |
+
+> **#894 migration note:** `audit_events_total{output, status}`
+> (formerly fed by `audit.Metrics.RecordDelivery`) was removed in
+> v0.2.1 because the pipeline-wide per-event counter could not be
+> reconciled with per-output buffering semantics across the file
+> and syslog outputs. Derive the delivered-event total from the
+> per-output `audit_output_flush_batch_size_sum` histogram bucket
+> instead — it is summed across all outputs and labelled by
+> `output_type` + `output_name`. The new
+> `audit_output_errors_by_output_total` is now event-count
+> accurate because `OutputMetrics.RecordError(count)` carries the
+> per-batch event count.
 
 **Per-output** (from `audit.OutputMetricsFactory`):
 

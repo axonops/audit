@@ -1,17 +1,23 @@
-# TLS policy configuration — demonstrates per-output TLS settings.
+# TLS configuration — demonstrates per-output TLS settings.
 #
 # This example shows two scenarios:
-#   1. Per-output TLS policy on a legacy syslog target (allows TLS 1.2).
-#   2. stdout: unaffected by TLS policy (no network transport).
+#   1. Per-output TLS block on a legacy syslog target (allows TLS 1.2).
+#   2. stdout: unaffected by TLS (no network transport).
 #
-# TLS policy is configured INSIDE each TLS-capable output block
+# TLS is configured INSIDE each TLS-capable output's `tls:` block
 # (syslog with network: tcp+tls, webhook with https://, loki with
-# https://) and inside each secret-provider block (vault, openbao).
-# There is no root-level tls_policy key — setting one at the top of
-# this file fails at startup with an "unknown top-level key" error.
+# https://, splunk with https://) and inside each secret-provider's
+# `tls:` block (vault, openbao). There is no root-level `tls:` key
+# — setting one at the top of this file fails at startup with an
+# "unknown top-level key" error.
 #
-# Each output that omits tls_policy defaults to TLS 1.3 only
+# Each output that omits the `tls:` block defaults to TLS 1.3 only
 # (no TLS 1.2, no weak ciphers).
+#
+# Cert material (ca/cert/key) and policy flags (allow_tls12,
+# allow_weak_ciphers) live together inside `tls:`. SSRF / transport-
+# policy flags (allow_insecure_http, allow_private_ranges) stay at
+# the output's top level — they are not TLS concerns.
 
 version: 1
 
@@ -24,31 +30,33 @@ outputs:
     type: stdout
 
   # In production, configure TLS-enabled outputs with their own
-  # per-output tls_policy block like:
+  # per-output `tls:` block like:
   #
   # modern_siem:
   #   type: syslog
   #   syslog:
   #     network: "tcp+tls"
   #     address: "modern-syslog.internal:6514"
-  #     tls_ca: "/etc/audit/tls/ca.pem"
-  #     # No tls_policy block → defaults to TLS 1.3 only.
+  #     tls:
+  #       ca: "/etc/audit/tls/ca.pem"
+  #       # All policy flags omitted → defaults to TLS 1.3 only.
   #
   # legacy_siem:
   #   type: syslog
   #   syslog:
   #     network: "tcp+tls"
   #     address: "legacy-syslog.internal:6514"
-  #     tls_ca: "/etc/audit/tls/ca.pem"
-  #     tls_policy:
-  #       allow_tls12: true           # allow TLS 1.2 for this output only
-  #       allow_weak_ciphers: false   # keep ciphers strict
+  #     tls:
+  #       ca: "/etc/audit/tls/ca.pem"
+  #       allow_tls12: true            # allow TLS 1.2 for this output only
+  #       allow_weak_ciphers: false    # keep ciphers strict
   #
   # webhook_alerts:
   #   type: webhook
   #   webhook:
   #     url: "https://alerts.internal/audit"
-  #     tls_ca: "/etc/audit/tls/ca.pem"
-  #     tls_cert: "/etc/audit/tls/client.pem"   # mTLS client cert
-  #     tls_key: "/etc/audit/tls/client-key.pem" # mTLS client key
-  #     # No tls_policy → defaults to TLS 1.3 only.
+  #     tls:
+  #       ca: "/etc/audit/tls/ca.pem"
+  #       cert: "/etc/audit/tls/client.pem"    # mTLS client cert
+  #       key: "/etc/audit/tls/client-key.pem" # mTLS client key
+  #       # No allow_* flags → defaults to TLS 1.3 only.

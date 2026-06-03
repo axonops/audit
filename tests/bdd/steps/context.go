@@ -54,6 +54,13 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 	Markers           map[string]string // logical name -> unique marker string
 	SymlinkTargetPath string            // file.Output symlink-safety scenarios — real path behind the symlink
 
+	// RecordingOutput is exposed by the async_edges accounting
+	// scenarios so the delivery accounting invariant can count
+	// delivered events directly from the recording output. Required
+	// after #894 removed Metrics.RecordDelivery — see
+	// async_edges_steps.go.
+	RecordingOutput recordingOutputCounter
+
 	// Docker infrastructure.
 	WebhookURL     string // "http://localhost:8080"
 	LokiURL        string // "http://localhost:3100"
@@ -115,6 +122,14 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 	// typed key, since steps within different scenarios would
 	// otherwise race on it.
 	ScenarioName string
+}
+
+// recordingOutputCounter is the minimal interface AuditTestContext
+// needs from a recording mock output: an event-count probe. The
+// async_edges accounting invariant scenarios use this in place of
+// the removed (#894) Metrics.RecordDelivery counter.
+type recordingOutputCounter interface {
+	eventCount() int
 }
 
 // AddCleanup registers a cleanup function to run after the scenario.

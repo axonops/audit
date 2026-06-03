@@ -4,20 +4,16 @@ Feature: Metrics Interface
   pipeline events so that I can monitor audit health via my observability
   stack.
 
-  The core audit.Metrics interface records: event delivery (success/error),
-  validation errors, filter drops, serialisation errors, and buffer drops.
-  Output-specific metrics (file rotation, syslog reconnect, webhook flush)
-  are tested in their respective output features.
+  The core audit.Metrics interface records: pipeline-wide output write
+  errors, validation errors, filter drops, serialisation errors, and
+  core intake buffer drops. Per-output delivery counts (success and
+  error event totals) come from OutputMetrics.RecordFlush and
+  RecordError(count), tested in the output_metrics_factory feature and
+  the per-output features (file/syslog/webhook/loki/splunk).
 
   Background:
     Given a standard test taxonomy
     And mock metrics are configured
-
-  Scenario: Successful event delivery records success metric
-    Given an auditor with stdout output and metrics
-    When I audit event "user_create" with required fields
-    And I close the auditor
-    Then the metrics should have recorded event "success" for output "stdout"
 
   Scenario: Validation error records validation metric
     Given an auditor with stdout output and metrics
@@ -45,12 +41,6 @@ Feature: Metrics Interface
     When I audit event "user_create" with required fields
     And I close the auditor
     Then the event should be delivered successfully
-
-  Scenario: Multiple outputs record success metric for non-DeliveryReporter outputs
-    Given an auditor with file and stdout outputs and metrics
-    When I audit event "user_create" with required fields
-    And I close the auditor
-    Then the metrics should have recorded at least 1 success events
 
   Scenario: Unknown field in strict mode records validation error
     Given an auditor with stdout output and metrics in strict mode
@@ -91,16 +81,7 @@ Feature: Metrics Interface
     And I close the auditor
     Then the metrics should have recorded a serialization error
 
-  @docker @webhook
-  Scenario: DeliveryReporter output does not double-record in core metrics
-    Given mock metrics are configured
-    And an auditor with webhook output and metrics
-    When I audit a uniquely marked webhook "user_create" event
-    Then the webhook receiver should have at least 1 event within 5 seconds
-    And I close the auditor
-    And the metrics should not have recorded a success event for webhook output
-
-  Scenario: Output write failure records output error metric
+  Scenario: Output write failure records pipeline-wide output error
     Given mock metrics are configured
     And an auditor with error output and metrics
     When I audit event "user_create" with required fields
@@ -113,3 +94,13 @@ Feature: Metrics Interface
     And I disable category "security"
     When I audit event "auth_failure" with required fields
     Then the audit call should return no error
+
+  # Notes (#894): the prior success/failure RecordDelivery scenarios
+  # (lines 16-20, 49-53 in the v0.2.0 version of this feature) and
+  # the "DeliveryReporter does not double-record" scenario (lines
+  # 94-101) were removed when Metrics.RecordDelivery and
+  # DeliveryReporter were deleted. Per-output delivery counts (success
+  # AND error event totals) now flow through OutputMetrics.RecordFlush
+  # (batchSize sum) and OutputMetrics.RecordError(count); the
+  # output_metrics_factory.feature scenarios assert the new contract
+  # end-to-end with mock OutputMetrics implementations.

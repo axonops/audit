@@ -8,6 +8,54 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Breaking
 
+- **`audit.Metrics.RecordDelivery`, `audit.EventStatus`,
+  `audit.EventSuccess`, `audit.EventError` removed.** The pipeline-
+  wide per-event delivery counter is gone. Consumers derive event-
+  level delivery counts by summing `audit.OutputMetrics.RecordFlush`
+  batchSize values; per-output error counts come from the newly-
+  extended `audit.OutputMetrics.RecordError(count int)`. The
+  RecordDelivery double-counting trap (consumers having to choose
+  between core RecordDelivery and OutputMetrics RecordFlush as the
+  canonical "delivered events" signal) is gone — RecordFlush sums
+  ARE the canonical signal. (#894)
+- **`audit.DeliveryReporter` interface removed.** Outputs no longer
+  signal "I self-report"; the core auditor's drain path simply
+  records `RecordOutputError` on write failures, and each output's
+  own `OutputMetrics` carries the live delivery counters. (#894)
+- **`audit.OutputMetrics.RecordError` signature extended from
+  `RecordError()` to `RecordError(count int)`.** Per-batch error
+  paths in webhook, loki, splunk, file, syslog all pass
+  `len(batch)`; single-event paths pass `1`.
+  `audit.NoOpOutputMetrics` updated; both Prometheus reference
+  adapters (`examples/20-prometheus-reference`, `examples/21-capstone`)
+  use `Add(float64(count))` instead of `Inc()`. (#894)
+- **`audit.OutputMetrics.RecordDrop` signature extended from
+  `RecordDrop()` to `RecordDrop(count int)`.** Symmetry with
+  `RecordError(count)`. Splunk's gzip batch-failure path and any
+  batch-aware drop sites now pass `len(batch)`; single-event drop
+  paths pass `1`. (#894)
+- **YAML TLS configuration restructured under a single `tls:` block
+  for every output (webhook, loki, splunk, syslog) and every secret
+  provider (vault, openbao).** The top-level `tls_ca`, `tls_cert`,
+  `tls_key`, `tls_policy` keys are removed; they move under each
+  block's `tls:` sub-block as `ca`, `cert`, `key`, `allow_tls12`,
+  `allow_weak_ciphers`. Syslog's `tls:` block omits
+  `allow_insecure_http` / `allow_private_ranges` (HTTP-protocol
+  concepts that don't apply to TCP/TLS syslog). The
+  `allow_insecure_http` and `allow_private_ranges` flags stay at
+  each HTTP output's top level — they are HTTP/network policy, not
+  TLS, and nesting them inside `tls:` would be a category error.
+  Legacy flat keys are rejected by `yaml.DisallowUnknownField()` with
+  an actionable error. See [`docs/output-configuration.md`](docs/output-configuration.md#per-output-tls)
+  and [`examples/14-tls-policy/`](examples/14-tls-policy/). (#894)
+- **`splunk.ValidateCloudStack` removed from the public API.** The
+  function is now unexported as `splunk.validateCloudStack` — it is
+  an internal helper called by `Config.Validate` when expanding a
+  `splunkcloud://<stack>` URL. Consumers do not need to call it
+  directly: validation runs automatically. There was no external
+  use case; the symbol was exported temporarily to support a
+  black-box test which has now moved to the package-internal test
+  file. (#894)
 - **Constructor signature unification across `webhook`, `loki`, and
   `splunk` output modules.** All three modules previously took a
   positional `metrics audit.Metrics` argument that was almost always
@@ -37,6 +85,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   change — the factory now routes `fctx.CoreMetrics` through the
   option internally. Surfaced by api-ergonomics-reviewer in the
   v0.2.0 release gate as the v1.0 BLOCKER 1.
+
+### Fixed
+
+- **The v0.2.0 Known Issue "`DeliveryReporter` contract gap on
+  `file` and `syslog` outputs" is resolved.** Both outputs declared
+  `ReportsDelivery() bool { return true }` but never called
+  `Metrics.RecordDelivery`, so an auditor wired only with file or
+  syslog reported zero events on the auditor-wide sink. #894 drops
+  `Metrics.RecordDelivery` and the `DeliveryReporter` interface
+  entirely; per-output delivery counts now flow exclusively through
+  `OutputMetrics.RecordFlush` (batchSize sum) and
+  `OutputMetrics.RecordError(count)`. Every output reports
+  delivery consistently through the same surface — the file and
+  syslog contract gap is gone, not papered over.
 
 ### Known Issues
 

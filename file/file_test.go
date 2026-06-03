@@ -46,11 +46,11 @@ type mockOutputMetrics struct {
 	depthCalls atomic.Int64
 }
 
-func (m *mockOutputMetrics) RecordDrop() { m.drops.Add(1) }
+func (m *mockOutputMetrics) RecordDrop(count int) { m.drops.Add(int64(count)) }
 func (m *mockOutputMetrics) RecordFlush(count int, _ time.Duration) {
 	m.flushes.Add(int64(count))
 }
-func (m *mockOutputMetrics) RecordError()              { m.errors.Add(1) }
+func (m *mockOutputMetrics) RecordError(count int)     { m.errors.Add(int64(count)) }
 func (m *mockOutputMetrics) RecordRetry(_ int)         { m.retries.Add(1) }
 func (m *mockOutputMetrics) RecordQueueDepth(_, _ int) { m.depthCalls.Add(1) }
 
@@ -415,20 +415,8 @@ func TestFileOutput_ImplementsOutput(t *testing.T) {
 	var _ audit.Output = out
 }
 
-func TestFileOutput_ImplementsDeliveryReporter(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "audit.log")
-
-	out, err := file.New(&file.Config{Path: path})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = out.Close() })
-
-	// Type assertion through audit.Output interface.
-	var o audit.Output = out
-	dr, ok := o.(audit.DeliveryReporter)
-	require.True(t, ok, "file output must implement DeliveryReporter")
-	assert.True(t, dr.ReportsDelivery(), "file output must self-report delivery")
-}
+// Note (#894): TestFileOutput_ImplementsDeliveryReporter removed when
+// audit.DeliveryReporter was deleted alongside Metrics.RecordDelivery.
 
 // TestFileOutput_ImplementsOutputMetricsReceiver was removed in #696
 // along with the OutputMetricsReceiver interface. Per-output metrics
@@ -1186,10 +1174,10 @@ type errorCountingMetrics struct {
 	errors int
 }
 
-func (m *errorCountingMetrics) RecordError() {
+func (m *errorCountingMetrics) RecordError(count int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.errors++
+	m.errors += count
 }
 
 func (m *errorCountingMetrics) errorCount() int {

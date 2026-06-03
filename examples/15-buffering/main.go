@@ -115,7 +115,7 @@ Two levels of buffering exist in the pipeline:
 
   Level 2: Per-Output Buffer (all outputs except stdout)
     Drain goroutine → output channel (output buffer_size) → writeLoop/batchLoop
-    Drop signal: OutputMetrics.RecordDrop() + slog.Warn
+    Drop signal: OutputMetrics.RecordDrop(count) + slog.Warn
     Tuning: increase output buffer_size, decrease flush_interval
 
   Only stdout writes synchronously from the drain goroutine.

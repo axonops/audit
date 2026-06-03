@@ -18,7 +18,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -95,6 +94,7 @@ func registerAsyncEdgesSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		// has separate coverage; this scenario isolates the core
 		// metrics invariant.
 		rec := &recordingMockOutput{name: "recording"}
+		tc.RecordingOutput = rec
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
@@ -124,11 +124,17 @@ func registerAsyncEdgesSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		m.mu.Lock()
 		defer m.mu.Unlock()
 
-		successes := 0
-		for k, v := range m.Events {
-			if strings.HasSuffix(k, ":success") {
-				successes += v
-			}
+		// #894: per-event RecordDelivery (the previous source of the
+		// `successes` term) was deleted. Delivered events are now
+		// counted directly from the recording mock output, which
+		// captures every Write() call in memory. Falls back to
+		// OutputMetrics.RecordFlush count when no recording output
+		// is wired.
+		delivered := 0
+		if tc.RecordingOutput != nil {
+			delivered = tc.RecordingOutput.eventCount()
+		} else if tc.OutputMetricsMock != nil {
+			delivered = tc.OutputMetricsMock.FlushCount()
 		}
 		outputErrs := 0
 		for _, v := range m.OutputErrors {
@@ -146,11 +152,11 @@ func registerAsyncEdgesSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		for _, v := range m.SerializationErrs {
 			serial += v
 		}
-		total := successes + outputErrs + filtered + validation + serial + m.BufferDrops
+		total := delivered + outputErrs + filtered + validation + serial + m.BufferDrops
 		if total != m.Submitted {
 			return fmt.Errorf(
-				"invariant broken: submitted=%d != successes=%d + output_errors=%d + filtered=%d + validation_errors=%d + serialization_errors=%d + buffer_drops=%d (sum=%d)",
-				m.Submitted, successes, outputErrs, filtered, validation, serial, m.BufferDrops, total)
+				"invariant broken: submitted=%d != delivered=%d + output_errors=%d + filtered=%d + validation_errors=%d + serialization_errors=%d + buffer_drops=%d (sum=%d)",
+				m.Submitted, delivered, outputErrs, filtered, validation, serial, m.BufferDrops, total)
 		}
 		return nil
 	})
@@ -185,6 +191,7 @@ func registerAsyncEdgesSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 			tc.MockMetrics = NewMockMetrics()
 		}
 		rec := &recordingMockOutput{name: "recording"}
+		tc.RecordingOutput = rec
 		auditor, err := audit.New(
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithAppName("test-app"),
@@ -219,6 +226,7 @@ func registerAsyncEdgesSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		// result because the producer's drops were recorded at
 		// submit time, not drain time (#722 AC #4).
 		out := &slowMockOutput{delay: 200 * time.Millisecond}
+		tc.RecordingOutput = out
 		auditor, err := audit.New(
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithAppName("test-app"),
@@ -321,11 +329,14 @@ func registerAsyncEdgesSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		m := tc.MockMetrics
 		m.mu.Lock()
 		defer m.mu.Unlock()
+		// #894: per-event RecordDelivery was deleted; "successes" now
+		// comes from the recording mock output's eventCount() or the
+		// per-output OutputMetrics RecordFlush count.
 		successes := 0
-		for k, v := range m.Events {
-			if strings.HasSuffix(k, ":success") {
-				successes += v
-			}
+		if tc.RecordingOutput != nil {
+			successes = tc.RecordingOutput.eventCount()
+		} else if tc.OutputMetricsMock != nil {
+			successes = tc.OutputMetricsMock.FlushCount()
 		}
 		got := successes + m.BufferDrops
 		if got != want {

@@ -26,8 +26,6 @@ import (
 	"net/url"
 	"strconv"
 	"time"
-
-	"github.com/axonops/audit"
 )
 
 // sanitiseClientError returns a copy of err with any embedded
@@ -107,7 +105,7 @@ func (o *Output) doPostWithRetry(ctx context.Context, body []byte, batchSize int
 			logger.Error("audit/loki: non-retryable error",
 				"error", sanitiseClientError(err),
 				"batch_size", batchSize)
-			o.recordError()
+			o.recordError(batchSize)
 			o.recordDrop(batchSize)
 			return
 		}
@@ -222,29 +220,20 @@ func (o *Output) applyRequestHeaders(req *http.Request, compressed bool) {
 }
 
 // recordSuccess records successful delivery metrics for a batch.
+// Per-event delivery counts come from summing OutputMetrics.RecordFlush
+// batchSize values; the auditor no longer carries a per-event
+// pipeline counter.
 func (o *Output) recordSuccess(batchSize int, dur time.Duration) {
 	// Record the wall-clock delivery timestamp for #753
 	// LastDeliveryReporter. Updated AFTER the push API returns 2xx
 	// so retry-exhausted batches leave the timestamp frozen.
 	o.lastDeliveryNanos.Store(time.Now().UnixNano())
 	o.outputMetrics.RecordFlush(batchSize, dur)
-	if o.metrics != nil {
-		name := o.Name()
-		for range batchSize {
-			o.metrics.RecordDelivery(name, audit.EventSuccess)
-		}
-	}
 }
 
 // recordDrop records dropped events in metrics.
 func (o *Output) recordDrop(count int) {
-	name := o.Name()
-	for range count {
-		o.outputMetrics.RecordDrop()
-		if o.metrics != nil {
-			o.metrics.RecordDelivery(name, audit.EventError)
-		}
-	}
+	o.outputMetrics.RecordDrop(count)
 }
 
 // recordRetry records a retry attempt in output metrics.
@@ -252,9 +241,10 @@ func (o *Output) recordRetry(attempt int) {
 	o.outputMetrics.RecordRetry(attempt)
 }
 
-// recordError records a non-retryable error in output metrics.
-func (o *Output) recordError() {
-	o.outputMetrics.RecordError()
+// recordError records a non-retryable error in output metrics for a
+// batch. count is the number of events that failed delivery.
+func (o *Output) recordError(count int) {
+	o.outputMetrics.RecordError(count)
 }
 
 // parseRetryAfter parses a Retry-After header value (delta-seconds

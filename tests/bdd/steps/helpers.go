@@ -139,7 +139,6 @@ func formatFieldValue(v any) string {
 // MockMetrics captures all metrics calls for assertion in BDD steps.
 // Thread-safe: the drain goroutine calls metrics methods concurrently.
 type MockMetrics struct { //nolint:govet // fieldalignment: readability preferred
-	Events            map[string]int // "output:status" -> count
 	OutputErrors      map[string]int
 	OutputFiltered    map[string]int
 	ValidationErrors  map[string]int
@@ -160,20 +159,12 @@ type QueueDepthRecord struct {
 // NewMockMetrics creates a fresh MockMetrics.
 func NewMockMetrics() *MockMetrics {
 	return &MockMetrics{
-		Events:            make(map[string]int),
 		OutputErrors:      make(map[string]int),
 		OutputFiltered:    make(map[string]int),
 		ValidationErrors:  make(map[string]int),
 		Filtered:          make(map[string]int),
 		SerializationErrs: make(map[string]int),
 	}
-}
-
-// RecordDelivery satisfies audit.Metrics.
-func (m *MockMetrics) RecordDelivery(output string, status audit.EventStatus) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.Events[output+":"+string(status)]++
 }
 
 // RecordOutputError satisfies audit.Metrics.
@@ -246,19 +237,6 @@ func (m *MockMetrics) QueueDepthCallCount() int {
 	return len(m.QueueDepths)
 }
 
-// HasSuccessEventFor returns true if any "key:success" event was recorded
-// where key contains the given substring.
-func (m *MockMetrics) HasSuccessEventFor(substr string) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for k, v := range m.Events {
-		if strings.Contains(k, substr) && strings.HasSuffix(k, ":success") && v > 0 {
-			return true
-		}
-	}
-	return false
-}
-
 // HasOutputErrorFor returns true if any output error was recorded
 // where the key contains the given substring.
 func (m *MockMetrics) HasOutputErrorFor(substr string) bool {
@@ -287,10 +265,10 @@ type MockOutputMetrics struct { //nolint:govet // fieldalignment: readability pr
 }
 
 // RecordDrop satisfies audit.OutputMetrics.
-func (m *MockOutputMetrics) RecordDrop() {
+func (m *MockOutputMetrics) RecordDrop(count int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.drops++
+	m.drops += count
 }
 
 // RecordFlush satisfies audit.OutputMetrics.
@@ -302,10 +280,10 @@ func (m *MockOutputMetrics) RecordFlush(_ int, dur time.Duration) {
 }
 
 // RecordError satisfies audit.OutputMetrics.
-func (m *MockOutputMetrics) RecordError() {
+func (m *MockOutputMetrics) RecordError(count int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.errors++
+	m.errors += count
 }
 
 // RecordRetry satisfies audit.OutputMetrics.

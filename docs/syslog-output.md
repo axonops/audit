@@ -319,10 +319,10 @@ TCP+TLS for events with large payloads.
 ### TCP+TLS
 
 Encrypted transport meeting compliance requirements. TLS 1.3 is
-enforced by default (configurable via `tls_policy`). Supports:
+enforced by default (configurable via the `tls:` block). Supports:
 
-- **Server verification** via CA certificate (`tls_ca`)
-- **Mutual TLS (mTLS)** via client certificates (`tls_cert`, `tls_key`)
+- **Server verification** via CA certificate (`tls.ca`)
+- **Mutual TLS (mTLS)** via client certificates (`tls.cert`, `tls.key`)
 
 See [TLS and mTLS Configuration](#tls-and-mtls-configuration) below.
 
@@ -471,14 +471,14 @@ than holding `Close()` hostage through a full retry cycle.
 | `flush_interval` | duration | `"5s"` | Max time between flushes (1ms–1h). See [Batching](#batching) |
 | `max_batch_bytes` | int | `1048576` (1 MiB) | Max accumulated bytes before flush (1 KiB–10 MiB). Oversized single events flush alone. See [Batching](#batching) |
 | `max_retries` | int | `10` | Maximum consecutive reconnection attempts. Range: 0-20 (0 defaults to 10, values > 20 rejected) |
-| `tls_ca` | string | *(none)* | Path to CA certificate for server verification |
-| `tls_cert` | string | *(none)* | Path to client certificate for mTLS |
-| `tls_key` | string | *(none)* | Path to client private key for mTLS |
-| `tls_policy` | object | *(nil — TLS 1.3 only)* | TLS version and cipher policy |
-| `tls_policy.allow_tls12` | bool | `false` | Allow TLS 1.2 (default: TLS 1.3 only) |
-| `tls_policy.allow_weak_ciphers` | bool | `false` | Allow weaker cipher suites with TLS 1.2 |
+| `tls` | object | *(none — TLS 1.3 only)* | TLS configuration block. Groups cert material and policy flags. Only used when `network: tcp+tls`. |
+| `tls.ca` | string | *(none)* | Path to CA certificate for server verification |
+| `tls.cert` | string | *(none)* | Path to client certificate for mTLS |
+| `tls.key` | string | *(none)* | Path to client private key for mTLS |
+| `tls.allow_tls12` | bool | `false` | Allow TLS 1.2 (default: TLS 1.3 only) |
+| `tls.allow_weak_ciphers` | bool | `false` | Allow weaker cipher suites with TLS 1.2 |
 | `verify_on_startup` | bool | `true` | When `true` (default), `New()` dials the syslog server — and, on `tcp+tls`, completes the TLS handshake — before returning, so a misconfigured or down destination fails fast at startup rather than surfacing as silent event loss once the asynchronous write path triggers. Set to `false` for sidecar/lazy-start deployments where the destination may not yet be ready when the application starts; the runtime reconnect machinery handles "no connection yet" via the existing exponential-backoff retry path. |
-| `verify_on_startup_timeout` | duration | `5s` | Bounds the construction-time dial. Independent of `tls_handshake_timeout` (which bounds reconnect handshakes during runtime). Ignored when `verify_on_startup: false`. |
+| `verify_on_startup_timeout` | duration | `5s` | Bounds the construction-time dial. Independent of the Go-only `Config.TLSHandshakeTimeout` (which bounds reconnect handshakes during runtime; not currently YAML-exposed — set programmatically when constructing the `syslog.Config`). Ignored when `verify_on_startup: false`. |
 
 ### Validation Rules
 
@@ -487,7 +487,7 @@ than holding `Close()` hostage through a full retry cycle.
 - `facility` MUST be a valid facility name (see table below)
 - `hostname` MUST contain only PRINTUSASCII bytes (33–126) and be at
   most 255 bytes
-- `tls_cert` and `tls_key` MUST both be set or both empty
+- `tls.cert` and `tls.key` MUST both be set or both empty
 - TLS files MUST exist and not be directories
 
 ## TLS and mTLS Configuration
@@ -501,11 +501,13 @@ outputs:
     syslog:
       network: "tcp+tls"
       address: "syslog.internal:6514"
-      tls_ca: "/etc/audit/ca.pem"
+      tls:
+        ca: "/etc/audit/ca.pem"
 ```
 
 The server's certificate is verified against the provided CA. If
-`tls_ca` is omitted, the system's default certificate pool is used.
+`tls.ca` is omitted (or the whole `tls:` block is omitted), the
+system's default certificate pool is used.
 
 ### Mutual TLS (mTLS)
 
@@ -516,9 +518,10 @@ outputs:
     syslog:
       network: "tcp+tls"
       address: "syslog.internal:6514"
-      tls_ca: "/etc/audit/ca.pem"
-      tls_cert: "/etc/audit/client-cert.pem"
-      tls_key: "/etc/audit/client-key.pem"
+      tls:
+        ca: "/etc/audit/ca.pem"
+        cert: "/etc/audit/client-cert.pem"
+        key: "/etc/audit/client-key.pem"
 ```
 
 Both client certificate and key are required for mTLS. The server must
@@ -541,7 +544,7 @@ outputs:
     syslog:
       network: "tcp+tls"
       address: "legacy-syslog.internal:6514"
-      tls_policy:
+      tls:
         allow_tls12: true        # fall back to TLS 1.2
         allow_weak_ciphers: false # still use only secure cipher suites
 ```
@@ -694,9 +697,10 @@ outputs:
       address: "${SYSLOG_ADDR}:6514"
       app_name: "${APP_NAME}"
       facility: "local0"
-      tls_ca: "/etc/audit/tls/ca.pem"
-      tls_cert: "/etc/audit/tls/client.pem"
-      tls_key: "/etc/audit/tls/client-key.pem"
+      tls:
+        ca: "/etc/audit/tls/ca.pem"
+        cert: "/etc/audit/tls/client.pem"
+        key: "/etc/audit/tls/client-key.pem"
       max_retries: 10
 ```
 
@@ -740,7 +744,7 @@ outputs:
 | `dial tcp host:port: connect: connection refused` | Syslog server not reachable at startup | The server MUST be reachable when the output is created; check address and port |
 | Events silently lost (UDP) | Message too large for UDP | Switch to TCP or TCP+TLS; UDP truncates at ~2048 bytes |
 | TLS handshake failure | Certificate mismatch or expired | Verify CA cert matches server cert; check expiry dates |
-| `tls_cert and tls_key must both be set` | Only one of cert/key provided | Provide both files or neither |
+| `tls.cert and tls.key must both be set` | Only one of cert/key provided | Provide both files or neither |
 | Reconnection storms in logs | Syslog server repeatedly failing | Check server health; increase `max_retries` for transient issues |
 | HOSTNAME shows binary name | `hostname` not set in config | Set `hostname` in the syslog config to match `host` from top-level YAML |
 

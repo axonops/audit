@@ -63,7 +63,8 @@ secrets:
   openbao:
     address: "${BAO_ADDR}"
     token: "${BAO_TOKEN}"
-    tls_ca: "${BAO_CA}"
+    tls:
+      ca: "${BAO_CA}"
     allow_private_ranges: true
 outputs:
   console:
@@ -108,7 +109,8 @@ secrets:
   vault:
     address: "${VAULT_ADDR}"
     token: "${VAULT_TOKEN}"
-    tls_ca: "${VAULT_CA}"
+    tls:
+      ca: "${VAULT_CA}"
     allow_private_ranges: true
 outputs:
   console:
@@ -345,7 +347,8 @@ secrets:
   openbao:
     address: "${BAO_ADDR}"
     token: "${BAO_TOKEN}"
-    tls_ca: "${BAO_CA}"
+    tls:
+      ca: "${BAO_CA}"
     allow_private_ranges: true
 outputs:
   console:
@@ -520,12 +523,14 @@ secrets:
   openbao:
     address: "${BAO_ADDR}"
     token: "${BAO_TOKEN}"
-    tls_ca: "${BAO_CA}"
+    tls:
+      ca: "${BAO_CA}"
     allow_private_ranges: true
   vault:
     address: "${VAULT_ADDR}"
     token: "${VAULT_TOKEN}"
-    tls_ca: "${VAULT_CA}"
+    tls:
+      ca: "${VAULT_CA}"
     allow_private_ranges: true
 outputs:
   bao_output:

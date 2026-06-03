@@ -120,6 +120,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Release workflow `gh-graphql-commit.sh` final jq calls now
+  tolerate non-JSON in `$response`.** When `submit_mutation`
+  captured stderr via `2>&1` (so the script could surface diagnostic
+  output on error), the captured bytes were sometimes contaminated
+  by gh CLI warnings or other non-JSON content. The downstream
+  `jq -r '.data.createCommitOnBranch.commit.oid // empty'` then
+  exited with code 5 ("invalid JSON") — and under `set -e` that 5
+  propagated silently out of the script, masquerading as a gh API
+  error rather than the parse failure it actually was. v0.2.1
+  release runs 26889155834, 26894419954, 26904041406, and
+  26911258665 all tripped this in the happy path: the GraphQL
+  mutation succeeded but the script exited 5 silently between
+  "created branch" and the success echo. Adds `|| true` guards on
+  both final jq invocations so the diagnostic `exit 69` ("response
+  missing commit.oid") fires correctly when the response is malformed,
+  surfacing the real content to the operator. (#913)
 - **Release workflow `resolve_head_oid` rejects non-SHA output from
   `gh api`.** When `gh api --jq` is called against a non-existent
   branch ref, gh returns HTTP 404 and dumps the raw error JSON body

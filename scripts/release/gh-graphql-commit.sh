@@ -66,9 +66,7 @@
 #      it to stdout for the workflow run-log audit trail.
 
 set -euo pipefail
-# Debug for #908: do NOT disable tracing — invoked via `bash -x`
-# from the workflow step so each command echoes to stderr.
-# set +x  # defence-in-depth: ensure no caller has enabled tracing
+set +x  # defence-in-depth: ensure no caller has enabled tracing
 
 # Cleanup: scrub GH_TOKEN from environment on exit even though the
 # workflow runner will reclaim it. Belts and braces.
@@ -234,10 +232,25 @@ done
 # Resolve expected head OID
 # ----------------------------------------------------------------
 
+# resolve_head_oid prints the 40-char hex SHA at the tip of <branch>
+# on origin, or an empty string if the branch does not exist (404)
+# or any other API failure occurs. The defensive validation matters:
+# on a 404 (branch missing), `gh api --jq` does NOT apply the jq
+# filter — it dumps the raw error JSON body to stdout. Without
+# validation, the caller's `[[ -z "$EXPECTED_HEAD_OID" ]]` check
+# returns false (the error JSON is non-empty), the create-branch
+# fallback is bypassed, and the GraphQL mutation receives the error
+# JSON as expectedHeadOid. v0.2.1 release runs 26889155834 and
+# 26894419954 both tripped this. The 40-hex-char regex guards
+# against any non-SHA-shaped output. (#910)
 resolve_head_oid() {
     local branch="$1"
-    gh api "repos/$OWNER/$REPO/git/ref/heads/$branch" \
-        --jq '.object.sha' 2>/dev/null || true
+    local raw
+    raw=$(gh api "repos/$OWNER/$REPO/git/ref/heads/$branch" \
+        --jq '.object.sha' 2>/dev/null || true)
+    if [[ "$raw" =~ ^[0-9a-f]{40}$ ]]; then
+        printf '%s' "$raw"
+    fi
 }
 
 EXPECTED_HEAD_OID="$(resolve_head_oid "$BRANCH")"

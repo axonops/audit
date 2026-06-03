@@ -454,12 +454,6 @@ jobs:
           PUBLISH_VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           set -euo pipefail
-          # Debug tracing for #908: localise the silent exit 5 that
-          # blocks v0.2.1 release at this step. Both the workflow
-          # shell and gh-graphql-commit.sh produce no output before
-          # exiting 5 — `set -x` plus explicit progress echoes pin
-          # down which command tripped.
-          set -x
           # gh-graphql-commit.sh enforces a release-series branch
           # name (`^release/v[0-9]+\.[0-9]+\.x$`) per security
           # hardening in #841. The series branch is a transient
@@ -494,24 +488,15 @@ jobs:
           # fails the commit.
           git add -A
 
-          echo "DEBUG: about to invoke gh-graphql-commit.sh, BRANCH=$BRANCH"
-          echo "DEBUG: git status BEFORE commit:"
-          git status --short | head -5
-          echo "DEBUG: number of changes: $(git status --porcelain | wc -l)"
-
           # App-signed commit via createCommitOnBranch (#841). The
           # legacy `git commit + git push` required toggling
           # required_signatures off; the GraphQL mutation signs with
           # the App identity server-side and satisfies the branch
           # protection rule directly.
-          # Debug for #908: invoke via bash -x to trace each command
-          # inside the script too. The script's `set +x` line is also
-          # removed temporarily for this debug PR.
-          bash -x scripts/release/gh-graphql-commit.sh \
+          scripts/release/gh-graphql-commit.sh \
             --branch "$BRANCH" \
             --message "release: pin inter-module deps to $PUBLISH_VERSION" \
             --auto-create-branch
-          echo "DEBUG: gh-graphql-commit.sh returned exit code: $?"
 
           # `gh pr create` may emit progress lines before the URL —
           # ask for the PR number directly via --json so we don't have

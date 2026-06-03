@@ -610,6 +610,17 @@ jobs:
   # The job needs preflight + wait-for-pr-merge with `if: always()`
   # plus result-checks so it runs only when the upstream completed
   # successfully.
+  #
+  # The event-name guards are load-bearing: relying on
+  # `wait-for-pr-merge.result == 'skipped'` to signal the recovery
+  # path is ambiguous, because `skipped` ALSO occurs when an upstream
+  # workflow_dispatch job (ci / fuzz-long / update-deps-pr) failed and
+  # cascade-skipped wait-for-pr-merge. The v0.2.0 release attempt (run
+  # 26802604151) tripped exactly this: cmd/audit-gen CI cancelled →
+  # update-deps-pr skipped → wait-for-pr-merge skipped → tag-all ran
+  # and emitted the cryptic "No merge SHA available" error 5 jobs
+  # downstream of the real failure. Guarding on github.event_name is
+  # the canonical "which path is this?" signal.
   # =====================================================================
   tag-all:
     name: Tag all published modules
@@ -619,7 +630,10 @@ jobs:
     if: |
       always() &&
       needs.preflight.result == 'success' &&
-      (needs.wait-for-pr-merge.result == 'success' || needs.wait-for-pr-merge.result == 'skipped')
+      (
+        (github.event_name == 'workflow_dispatch' && needs.wait-for-pr-merge.result == 'success') ||
+        github.event_name == 'push'
+      )
     permissions:
       contents: read  # App token grants writes
     outputs:

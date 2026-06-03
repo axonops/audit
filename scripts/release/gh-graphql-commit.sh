@@ -153,8 +153,14 @@ fi
 # NUL-separated to handle paths containing spaces, tabs, newlines,
 # or quote characters. --untracked-files=no so we don't include
 # anything stray that wasn't deliberately staged by the caller.
-declare -a additions
-declare -a deletions
+# MUST initialize with `=()`. Bash's `set -u` treats `declare -a foo`
+# (without =()) as unbound when accessed via `${foo[@]}` or
+# `${#foo[@]}` until a value is assigned. With no deletions in a
+# typical release commit, `${#deletions[@]}` would trip set -u.
+# Triggered by the #912 debug trace; latent bug otherwise masked by
+# the `:-` guards at lines 306/314.
+declare -a additions=()
+declare -a deletions=()
 
 # Read NUL-delimited records into an array. Each record is the
 # raw porcelain entry: "XY path\0" — where X is index status and
@@ -347,12 +353,15 @@ submit_mutation() {
         --raw-field variables="$variables"
 }
 
-echo "DEBUG: about to call submit_mutation" >&2
+echo "DEBUG: about to call build_payload" >&2
 _payload="$(build_payload "$EXPECTED_HEAD_OID")"
-echo "DEBUG: payload built (length: ${#_payload})" >&2
+_payload_rc=$?
+echo "DEBUG: build_payload done (rc=$_payload_rc length=${#_payload})" >&2
+echo "DEBUG: about to call submit_mutation" >&2
 response="$(submit_mutation "$_payload" 2>&1 || true)"
-echo "DEBUG: submit_mutation done (response length: ${#response})" >&2
-echo "DEBUG: response head: ${response:0:1000}" >&2
+_submit_rc=$?
+echo "DEBUG: submit_mutation done (rc=$_submit_rc length=${#response})" >&2
+echo "DEBUG: response head: ${response:0:2000}" >&2
 
 # STALE_DATA retry: the head OID we passed is no longer current
 # (someone or some prior workflow run pushed to the branch). Refetch

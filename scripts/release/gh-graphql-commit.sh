@@ -66,7 +66,9 @@
 #      it to stdout for the workflow run-log audit trail.
 
 set -euo pipefail
-set +x  # defence-in-depth: ensure no caller has enabled tracing
+# Debug for #908: do NOT disable tracing — invoked via `bash -x`
+# from the workflow step so each command echoes to stderr.
+# set +x  # defence-in-depth: ensure no caller has enabled tracing
 
 # Cleanup: scrub GH_TOKEN from environment on exit even though the
 # workflow runner will reclaim it. Belts and braces.

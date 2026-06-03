@@ -54,7 +54,7 @@ WORKSPACE_MODULES := $(MODULES) $(EXAMPLE_MODULES)
 # Windows (Git Bash tolerates forward slashes in Windows absolute
 # paths). (#877)
 GOBIN             := $(subst \,/,$(shell go env GOPATH))/bin
-GO_TOOLCHAIN      := go1.26.3
+GO_TOOLCHAIN      := go1.26.4
 # Windows go install appends .exe to executables; everything else is
 # bare. Used when the recipe must invoke an installed tool by absolute
 # path (cross-platform CI legs run under Git Bash).

@@ -109,6 +109,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   option internally. Surfaced by api-ergonomics-reviewer in the
   v0.2.0 release gate as the v1.0 BLOCKER 1.
 
+### Security
+
+- Go toolchain bumped to `1.26.4` for new Go stdlib vulnerability
+  GO-2026-5037 ("Inefficient candidate hostname parsing in
+  crypto/x509", fixed in `crypto/x509@go1.26.4`). Updated across
+  every `go.mod` (39 modules + examples), `GO_TOOLCHAIN` in the
+  Makefile, `GOTOOLCHAIN` in `release.yml`, and the
+  `docs/development-workflow.md` toolchain references.
+
 ### Fixed
 
 - **The v0.2.0 Known Issue "`DeliveryReporter` contract gap on

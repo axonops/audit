@@ -273,10 +273,6 @@ if [[ -z "$EXPECTED_HEAD_OID" ]]; then
             >/dev/null
         EXPECTED_HEAD_OID="$DEFAULT_OID"
         echo "gh-graphql-commit: created branch $BRANCH from $DEFAULT_BRANCH ($DEFAULT_OID)"
-        # Debug for #912: trace post-branch-create commit submission.
-        echo "DEBUG: EXPECTED_HEAD_OID=$EXPECTED_HEAD_OID len=${#EXPECTED_HEAD_OID}"
-        echo "DEBUG: additions count=${#additions[@]} deletions count=${#deletions[@]}"
-        set -x
     else
         echo "gh-graphql-commit: branch $BRANCH does not exist; pass --auto-create-branch to create it" >&2
         exit 66
@@ -353,15 +349,7 @@ submit_mutation() {
         --raw-field variables="$variables"
 }
 
-echo "DEBUG: about to call build_payload" >&2
-_payload="$(build_payload "$EXPECTED_HEAD_OID")"
-_payload_rc=$?
-echo "DEBUG: build_payload done (rc=$_payload_rc length=${#_payload})" >&2
-echo "DEBUG: about to call submit_mutation" >&2
-response="$(submit_mutation "$_payload" 2>&1 || true)"
-_submit_rc=$?
-echo "DEBUG: submit_mutation done (rc=$_submit_rc length=${#response})" >&2
-echo "DEBUG: response head: ${response:0:2000}" >&2
+response="$(submit_mutation "$(build_payload "$EXPECTED_HEAD_OID")" 2>&1 || true)"
 
 # STALE_DATA retry: the head OID we passed is no longer current
 # (someone or some prior workflow run pushed to the branch). Refetch
@@ -392,7 +380,18 @@ fi
 # Assert the response contains a non-null commit.oid. A response
 # without commit.oid means the API reported success but did not
 # create the commit — a real failure mode of GraphQL mutations.
-new_oid="$(jq -r '.data.createCommitOnBranch.commit.oid // empty' <<<"$response" 2>/dev/null)"
+#
+# The `|| true` is load-bearing under `set -e`: when the upstream
+# `submit_mutation` step captured stderr via `2>&1` and that stderr
+# contained non-JSON content (gh CLI warnings, network blips, or
+# debug xtrace), jq exits with code 5 — "invalid JSON". Without the
+# guard, `set -e` propagates that 5 out as a silent script exit
+# before the diagnostic echo can fire. v0.2.1 release runs
+# 26889155834, 26894419954, and 26904041406 all tripped this in the
+# happy path: the GraphQL mutation succeeded, but `$response` had
+# extra non-JSON bytes from gh's stderr, and jq's "invalid JSON"
+# error code looked indistinguishable from any other "5" upstream.
+new_oid="$(jq -r '.data.createCommitOnBranch.commit.oid // empty' <<<"$response" 2>/dev/null || true)"
 if [[ -z "$new_oid" ]]; then
     echo "gh-graphql-commit: response missing commit.oid:" >&2
     printf '%s\n' "$response" >&2
@@ -400,5 +399,7 @@ if [[ -z "$new_oid" ]]; then
 fi
 
 # Audit log: print the new commit OID and URL for the workflow run.
+# Same `|| true` guard as above — jq with `-r` on a $response that
+# contained mixed stderr content would exit 5 and trip `set -e`.
 echo "gh-graphql-commit: created commit $new_oid on branch $BRANCH"
-echo "$response" | jq -r '.data.createCommitOnBranch.commit.url'
+echo "$response" | jq -r '.data.createCommitOnBranch.commit.url' 2>/dev/null || true

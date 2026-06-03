@@ -118,6 +118,18 @@ type Config struct { //nolint:govet // fieldalignment: pointer field TLSPolicy e
 	// Both TLSCert and TLSKey must be set for client authentication.
 	TLSKey string
 
+	// TLSKeyPassword is the optional password for the PKCS#8 v2
+	// encrypted private key at TLSKey. When empty, the key at TLSKey
+	// must be unencrypted; when non-empty, the key must be a
+	// PKCS#8 ENCRYPTED PRIVATE KEY PEM block. PKCS#1 DEK-Info legacy
+	// encrypted keys are refused — rewrap with
+	// `openssl pkcs8 -topk8 -v2 aes256`. See
+	// [audit.LoadX509KeyPairWithPassword] and #896.
+	//
+	// The byte slice is consumed at output construction; callers
+	// SHOULD zero it after passing the Config to webhook.New.
+	TLSKeyPassword []byte
+
 	// TLSPolicy controls TLS version and cipher suite policy. When nil,
 	// the default policy (TLS 1.3 only) is used. See [audit.TLSPolicy] for
 	// details on enabling TLS 1.2 fallback.
@@ -230,8 +242,12 @@ type Config struct { //nolint:govet // fieldalignment: pointer field TLSPolicy e
 // replaced with [REDACTED]. Network traffic itself is unaffected;
 // this is a debug-log safety net, not the primary defence.
 func (c Config) String() string {
-	return fmt.Sprintf("WebhookConfig{url=%q, headers=%s, batch_size=%d, timeout=%s}",
-		sanitizeURLForLog(c.URL), redactHeaders(c.Headers), c.BatchSize, c.Timeout)
+	keyPw := "<unset>"
+	if len(c.TLSKeyPassword) > 0 {
+		keyPw = "[REDACTED]"
+	}
+	return fmt.Sprintf("WebhookConfig{url=%q, headers=%s, batch_size=%d, timeout=%s, tls_key_password=%s}",
+		sanitizeURLForLog(c.URL), redactHeaders(c.Headers), c.BatchSize, c.Timeout, keyPw)
 }
 
 // GoString returns the same redacted representation as [Config.String].
@@ -498,7 +514,7 @@ func buildWebhookTLSConfig(cfg *Config, logger *slog.Logger) (*tls.Config, error
 	}
 
 	if cfg.TLSCert != "" && cfg.TLSKey != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.TLSCert, cfg.TLSKey)
+		cert, err := audit.LoadX509KeyPairWithPassword(cfg.TLSCert, cfg.TLSKey, cfg.TLSKeyPassword)
 		if err != nil {
 			return nil, fmt.Errorf("audit/webhook: tls: load client certificate: %w", err)
 		}

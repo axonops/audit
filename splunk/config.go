@@ -280,10 +280,13 @@ type Config struct { //nolint:govet // fieldalignment: readability preferred (gr
 
 	// ============ TLS and network safety ============
 
-	TLSPolicy          *audit.TLSPolicy
-	TLSCA              string
-	TLSCert            string
-	TLSKey             string
+	TLSPolicy *audit.TLSPolicy
+	TLSCA     string
+	TLSCert   string
+	TLSKey    string
+	// TLSKeyPassword is the optional password for a PKCS#8 v2
+	// encrypted TLSKey. See [audit.LoadX509KeyPairWithPassword]. (#896)
+	TLSKeyPassword     []byte
 	AllowInsecureHTTP  bool
 	AllowPrivateRanges bool
 
@@ -547,7 +550,11 @@ func (c Config) String() string {
 			gzip = "false"
 		}
 	}
-	return fmt.Sprintf("SplunkConfig{url=%q, endpoint=%s, sourcetype=%q, index=%q, gzip=%s, batch_size=%d, max_batch_bytes=%d, ack_mode=%s, token=REDACTED}",
+	keyPw := "<unset>"
+	if len(c.TLSKeyPassword) > 0 {
+		keyPw = "[REDACTED]"
+	}
+	return fmt.Sprintf("SplunkConfig{url=%q, endpoint=%s, sourcetype=%q, index=%q, gzip=%s, batch_size=%d, max_batch_bytes=%d, ack_mode=%s, token=REDACTED, tls_key_password=%s}",
 		sanitizeURLForLog(c.URL),
 		c.Endpoint,
 		c.Sourcetype,
@@ -556,6 +563,7 @@ func (c Config) String() string {
 		c.BatchSize,
 		c.MaxBatchBytes,
 		c.AckMode,
+		keyPw,
 	)
 }
 
@@ -596,7 +604,7 @@ func sanitizeURLForLog(raw string) string {
 func buildTLSConfig(c *Config) (*tls.Config, []string, error) {
 	tlsCfg, warnings := c.TLSPolicy.Apply(nil)
 	if c.TLSCert != "" && c.TLSKey != "" {
-		cert, err := tls.LoadX509KeyPair(c.TLSCert, c.TLSKey)
+		cert, err := audit.LoadX509KeyPairWithPassword(c.TLSCert, c.TLSKey, c.TLSKeyPassword)
 		if err != nil {
 			return nil, warnings, fmt.Errorf("audit/splunk: load client cert/key: %w", err)
 		}

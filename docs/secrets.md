@@ -403,8 +403,17 @@ assembly. Provider config becomes an ops concern, not a code change.
 The YAML field names use `snake_case` equivalents of the Go struct
 fields (e.g. `allow_insecure_http` for `AllowInsecureHTTP`). TLS
 configuration lives under a nested `tls:` block (`tls.ca`,
-`tls.cert`, `tls.key`, `tls.allow_tls12`, `tls.allow_weak_ciphers`),
-not as flat top-level keys.
+`tls.cert`, `tls.key`, `tls.key_password`, `tls.allow_tls12`,
+`tls.allow_weak_ciphers`), not as flat top-level keys.
+
+When the provider's `tls.key` is a PKCS#8 v2 encrypted PEM key,
+supply the password via `tls.key_password` — within the
+`secrets:` block, only `${ENV}` substitution applies (you cannot
+use `ref+` to fetch the password from another secret provider
+without bootstrapping). For provider-style indirection on the
+TLS key password, configure the provider once with a plain
+`tls.key_password` reference value pointing to a YAML
+`secrets/file` or `secrets/env` source. (#896)
 
 Only environment variable substitution (`${VAR}`) is applied in the
 `secrets:` section — `ref+` secret references are NOT resolved, since

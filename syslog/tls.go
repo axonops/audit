@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+
+	"github.com/axonops/audit"
 )
 
 // buildSyslogTLSConfig constructs a TLS config from the syslog config.
@@ -32,7 +34,7 @@ func buildSyslogTLSConfig(cfg *Config, logger *slog.Logger) (*tls.Config, error)
 	}
 
 	if cfg.TLSCert != "" && cfg.TLSKey != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.TLSCert, cfg.TLSKey)
+		cert, err := audit.LoadX509KeyPairWithPassword(cfg.TLSCert, cfg.TLSKey, cfg.TLSKeyPassword)
 		if err != nil {
 			return nil, fmt.Errorf("audit/syslog: tls: load client certificate: %w", err)
 		}

@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Encrypted PKCS#8 v2 client private keys via
+  `tls.key_password`.** Every TLS-bearing block (webhook, loki,
+  splunk, syslog, vault, openbao) gains an optional
+  `tls.key_password` YAML field. Values support plain text, env
+  substitution (`${TLS_PW}`), and secret-provider URIs
+  (`ref+openbao://...`, `ref+vault://...`). Decoded with
+  PBKDF2-HMAC-SHA1/SHA256/SHA512 + AES-128/192/256-CBC, or scrypt
+  + AES-CBC, per RFC 8018 / RFC 7914. Legacy PKCS#1 `DEK-Info`
+  encrypted keys are refused with the new sentinel
+  `audit.ErrLegacyEncryptedPEMKey`, whose error message contains
+  the rewrap recipe `openssl pkcs8 -topk8 -v2 aes256 -in
+  legacy.key -out modern.key`. Cert / key path mismatch states
+  (encrypted key + empty password, or unencrypted key + non-empty
+  password) are rejected loudly. The new helper
+  [`audit.LoadX509KeyPairWithPassword`](https://pkg.go.dev/github.com/axonops/audit#LoadX509KeyPairWithPassword)
+  is the single chokepoint used by every output. Password bytes
+  are zeroed after the symmetric key is derived and after the
+  re-wrapped plain PEM is consumed by `tls.X509KeyPair`. Adds
+  `golang.org/x/crypto/{pbkdf2,scrypt}` as a direct dependency
+  (Go-team maintained). (#896)
+
 ### Breaking
 
 - **`audit.Metrics.RecordDelivery`, `audit.EventStatus`,

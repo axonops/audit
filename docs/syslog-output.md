@@ -475,6 +475,7 @@ than holding `Close()` hostage through a full retry cycle.
 | `tls.ca` | string | *(none)* | Path to CA certificate for server verification |
 | `tls.cert` | string | *(none)* | Path to client certificate for mTLS |
 | `tls.key` | string | *(none)* | Path to client private key for mTLS |
+| `tls.key_password` | string | *(none)* | Optional password for a PKCS#8 v2 encrypted `tls.key`. Supports plain text, `${ENV}`, and `ref+openbao://...` / `ref+vault://...`. (#896) |
 | `tls.allow_tls12` | bool | `false` | Allow TLS 1.2 (default: TLS 1.3 only) |
 | `tls.allow_weak_ciphers` | bool | `false` | Allow weaker cipher suites with TLS 1.2 |
 | `verify_on_startup` | bool | `true` | When `true` (default), `New()` dials the syslog server — and, on `tcp+tls`, completes the TLS handshake — before returning, so a misconfigured or down destination fails fast at startup rather than surfacing as silent event loss once the asynchronous write path triggers. Set to `false` for sidecar/lazy-start deployments where the destination may not yet be ready when the application starts; the runtime reconnect machinery handles "no connection yet" via the existing exponential-backoff retry path. |

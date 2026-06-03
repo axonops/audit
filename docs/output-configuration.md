@@ -469,6 +469,7 @@ secrets:
 | `tls.ca` | `""` | Path to a custom CA certificate PEM file for server-certificate verification. Empty means use the system trust store. |
 | `tls.cert` | `""` | Path to a client certificate for mTLS. MUST be paired with `tls.key`. |
 | `tls.key` | `""` | Path to the client private key for mTLS. MUST be paired with `tls.cert`. |
+| `tls.key_password` | `""` | Optional password for a PKCS#8 v2 encrypted `tls.key`. Supports plain text, env substitution (`${TLS_PW}`), and `ref+openbao://...` / `ref+vault://...` references. Encrypted keys MUST be in PKCS#8 v2 form (`ENCRYPTED PRIVATE KEY` PEM block) using PBKDF2 or scrypt + AES-CBC. Legacy PKCS#1 `DEK-Info` encrypted keys are refused — rewrap with `openssl pkcs8 -topk8 -v2 aes256`. (#896) |
 | `tls.allow_tls12` | `false` | Allow TLS 1.2 connections in addition to TLS 1.3. When `false` (default), only TLS 1.3 is accepted. Set `true` only when connecting to legacy infrastructure that does not support TLS 1.3. |
 | `tls.allow_weak_ciphers` | `false` | Allow weaker cipher suites when TLS 1.2 is enabled. Has no effect when `allow_tls12` is `false`. SHOULD NOT be enabled unless required by a specific server. |
 
@@ -481,6 +482,56 @@ or `network: udp`) have no `tls:` field. SSRF/transport-policy flags
 (`allow_insecure_http`, `allow_private_ranges`) live at each HTTP
 output's top level — they are HTTP/network policy, not TLS, and
 nesting them inside `tls:` would be a category error.
+
+### Encrypted private keys (`tls.key_password`)
+
+When `tls.key` is a PKCS#8 v2 `ENCRYPTED PRIVATE KEY` PEM block
+(modern `openssl pkcs8 -topk8 -v2 aes256` output), supply the
+password via `tls.key_password`. The value resolves through the
+same pipeline as every other YAML string:
+
+```yaml
+webhook:
+  url: https://siem.example.com
+  tls:
+    cert: /etc/audit/client.pem
+    key: /etc/audit/client.encrypted.key
+    # Recommended — pull from a secret provider:
+    key_password: ref+openbao://kv/data/audit#tls_key_password
+    # Or env substitution:
+    # key_password: ${TLS_KEY_PASSWORD}
+    # Or plain (dev only):
+    # key_password: "hunter2"
+```
+
+Supported decryption algorithms:
+
+- **PBES2 with AES-128/192/256-CBC** and
+  **PBKDF2-HMAC-SHA1 / SHA256 / SHA512** (RFC 8018).
+- **PBES2 with AES-128/192/256-CBC** and **scrypt** (RFC 7914).
+
+Legacy `Proc-Type: 4,ENCRYPTED` (PKCS#1 DEK-Info) PEM blocks —
+the `openssl genrsa -des3` form — are refused with
+`audit.ErrLegacyEncryptedPEMKey`. They cannot be re-enabled by a
+config flag. Rewrap with:
+
+```
+openssl pkcs8 -topk8 -v2 aes256 -in legacy.key -out modern.key
+```
+
+Mismatch states are also refused:
+
+- Encrypted PKCS#8 key + empty `key_password` → error (we do not
+  silently send an empty password to the decrypter).
+- Unencrypted key + non-empty `key_password` → error (likely
+  misconfiguration; remove `key_password` or supply an encrypted key).
+
+Password material is zeroed after the symmetric key has been
+derived and again after the re-wrapped plain PEM is consumed by
+`tls.X509KeyPair`. Diagnostic logs and `Config.String()` /
+`%v` / `%+v` / `%#v` formatters print `[REDACTED]` whenever the
+password is non-empty — the password bytes never appear in any
+error chain or log line.
 
 ### Tested TLS rejection failure modes
 
@@ -736,6 +787,7 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | `tls.ca` | — | CA certificate path for TLS verification. |
 | `tls.cert` | — | Client certificate path for mTLS. MUST be set together with `tls.key`. |
 | `tls.key` | — | Client key path for mTLS. MUST be set together with `tls.cert`. |
+| `tls.key_password` | — | Optional password for a PKCS#8 v2 encrypted `tls.key`. See [Per-Output TLS](#per-output-tls). (#896) |
 | `tls.allow_tls12` | `false` | Allow TLS 1.2 in addition to TLS 1.3. |
 | `tls.allow_weak_ciphers` | `false` | Allow weaker cipher suites when TLS 1.2 is enabled. |
 | `buffer_size` | `10000` | Internal async buffer capacity. Maximum: 100,000. |
@@ -784,6 +836,7 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | `tls.ca` | — | CA certificate path for TLS verification. |
 | `tls.cert` | — | Client certificate path for mTLS. MUST be set together with `tls.key`. |
 | `tls.key` | — | Client key path for mTLS. MUST be set together with `tls.cert`. |
+| `tls.key_password` | — | Optional password for a PKCS#8 v2 encrypted `tls.key`. See [Per-Output TLS](#per-output-tls). (#896) |
 | `tls.allow_tls12` | `false` | Allow TLS 1.2 in addition to TLS 1.3. |
 | `tls.allow_weak_ciphers` | `false` | Allow weaker cipher suites when TLS 1.2 is enabled. |
 | `allow_insecure_http` | `false` | Allow `http://` URLs. MUST NOT be `true` in production. Top-level — not TLS. |

@@ -162,6 +162,53 @@ outputs:
 Both `tls.cert` and `tls.key` MUST be set together. The server must
 be configured to require and verify client certificates.
 
+### Encrypted Private Keys (`tls.key_password`)
+
+When the client private key is a PKCS#8 v2 `ENCRYPTED PRIVATE KEY`
+PEM block, supply the password via `tls.key_password`. The library
+decrypts with AES-128/192/256-CBC + PBKDF2-HMAC-SHA1/SHA256/SHA512
+(RFC 8018) or scrypt (RFC 7914).
+
+```yaml
+outputs:
+  secure_siem:
+    type: syslog
+    syslog:
+      network: "tcp+tls"
+      address: "syslog.internal:6514"
+      tls:
+        ca: "/etc/audit/tls/ca.pem"
+        cert: "/etc/audit/tls/client.pem"
+        key: "/etc/audit/tls/client.encrypted.key"
+        # Recommended: pull from a secret provider.
+        key_password: ref+openbao://kv/data/audit#tls_key_password
+        # Or env substitution:
+        # key_password: "${TLS_KEY_PASSWORD}"
+        # Or plain (dev only):
+        # key_password: "hunter2"
+```
+
+**Generate an encrypted PKCS#8 key:**
+
+```
+openssl pkcs8 -topk8 -v2 aes256 -in client.unencrypted.key -out client.encrypted.key
+```
+
+**Legacy keys refused.** PKCS#1 PEM blocks with the
+`Proc-Type: 4,ENCRYPTED` header (the `openssl genrsa -des3`
+output) are refused with the sentinel `audit.ErrLegacyEncryptedPEMKey`.
+Go's `x509.DecryptPEMBlock` is deprecated since 1.16 — we never
+invoke it. Rewrap legacy keys with the openssl command above and
+configure `tls.key_password` for the new key.
+
+**Mismatches refused.** An encrypted key with an empty password,
+or an unencrypted key with a non-empty password, is rejected
+loudly rather than silently downgrading the TLS posture.
+
+**Redaction.** The password is `[REDACTED]` in every
+`Config.String()` / `%v` / `%+v` / `%#v` representation and never
+appears in error chains.
+
 ### Which Outputs Support TLS?
 
 | Output | TLS transport | TLS block | Client certs (mTLS) |

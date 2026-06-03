@@ -86,7 +86,7 @@ func ExampleConfig_redaction() {
 		Token: "super-secret-token",
 	}
 	fmt.Println(cfg.String())
-	// Output: SplunkConfig{url="https://splunk.example.com:8088", endpoint=event, sourcetype="", index="", gzip=<default>, batch_size=0, max_batch_bytes=0, ack_mode=off, token=REDACTED}
+	// Output: SplunkConfig{url="https://splunk.example.com:8088", endpoint=event, sourcetype="", index="", gzip=<default>, batch_size=0, max_batch_bytes=0, ack_mode=off, token=REDACTED, tls_key_password=<unset>}
 }
 
 // ExampleNew_cimJSON wires the Splunk output with the

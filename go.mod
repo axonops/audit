@@ -16,6 +16,7 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/goleak v1.3.0
+	golang.org/x/crypto v0.52.0
 	pgregory.net/rapid v1.3.0
 )
 

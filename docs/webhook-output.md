@@ -230,6 +230,7 @@ NDJSON is:
 | `tls.ca` | string | *(none)* | — | Path to CA certificate for server verification |
 | `tls.cert` | string | *(none)* | — | Path to client certificate for mTLS |
 | `tls.key` | string | *(none)* | — | Path to client private key for mTLS |
+| `tls.key_password` | string | *(none)* | — | Optional password for a PKCS#8 v2 encrypted `tls.key`. Supports plain text, `${ENV}`, and `ref+openbao://...` / `ref+vault://...`. Legacy PKCS#1 `DEK-Info` keys are refused — rewrap with `openssl pkcs8 -topk8 -v2 aes256`. (#896) |
 | `tls.allow_tls12` | bool | `false` | — | Allow TLS 1.2 fallback |
 | `tls.allow_weak_ciphers` | bool | `false` | — | Allow weaker cipher suites with TLS 1.2 |
 | `allow_insecure_http` | bool | `false` | — | Permit `http://` URLs. MUST NOT be true in production. Top-level — not TLS |

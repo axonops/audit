@@ -104,6 +104,7 @@ type yamlTLS struct {
 	CA               string `yaml:"ca"`
 	Cert             string `yaml:"cert"`
 	Key              string `yaml:"key"`
+	KeyPassword      string `yaml:"key_password"`
 	AllowTLS12       bool   `yaml:"allow_tls12"`
 	AllowWeakCiphers bool   `yaml:"allow_weak_ciphers"`
 }
@@ -198,6 +199,9 @@ func buildOutput(name string, rawConfig []byte, om audit.OutputMetrics, fctx aud
 		cfg.TLSCA = y.TLS.CA
 		cfg.TLSCert = y.TLS.Cert
 		cfg.TLSKey = y.TLS.Key
+		if y.TLS.KeyPassword != "" {
+			cfg.TLSKeyPassword = []byte(y.TLS.KeyPassword)
+		}
 		cfg.TLSPolicy = &audit.TLSPolicy{
 			AllowTLS12:       y.TLS.AllowTLS12,
 			AllowWeakCiphers: y.TLS.AllowWeakCiphers,

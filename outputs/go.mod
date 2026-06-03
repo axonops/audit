@@ -3,12 +3,12 @@ module github.com/axonops/audit/outputs
 go 1.26.4
 
 require (
-	github.com/axonops/audit v0.1.13
-	github.com/axonops/audit/file v0.1.13
-	github.com/axonops/audit/loki v0.1.13
-	github.com/axonops/audit/splunk v0.0.0-20260520183351-bad90dd00155
-	github.com/axonops/audit/syslog v0.1.13
-	github.com/axonops/audit/webhook v0.1.13
+	github.com/axonops/audit v0.2.1
+	github.com/axonops/audit/file v0.2.1
+	github.com/axonops/audit/loki v0.2.1
+	github.com/axonops/audit/splunk v0.2.1
+	github.com/axonops/audit/syslog v0.2.1
+	github.com/axonops/audit/webhook v0.2.1
 	github.com/stretchr/testify v1.11.1
 )
 

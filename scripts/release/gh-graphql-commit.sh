@@ -331,22 +331,25 @@ build_payload() {
 submit_mutation() {
     local payload="$1"
 
-    # Pass query+variables together so gh handles the wire format.
-    # `gh api graphql` expects the GraphQL document via -f query=...
-    # and variable values via -F (raw) for top-level structured input.
-    # We pre-marshalled the variables in payload's .input above.
     local query='mutation($input: CreateCommitOnBranchInput!) {
       createCommitOnBranch(input: $input) {
         commit { oid url }
       }
     }'
 
-    local variables
-    variables="$(jq -c '{ input: .input }' <<<"$payload")"
+    # Build the full GraphQL request body and pipe via `--input -`.
+    # Prior pattern used `--raw-field variables=$variables` which sent
+    # variables as a JSON-encoded STRING rather than a structured
+    # object — GitHub's API then saw `$input` as undefined and
+    # returned `Variable $input of type CreateCommitOnBranchInput!
+    # was provided invalid value` (v0.2.1 release run 26915011552).
+    # The `--argjson p` here parses payload as JSON, so the body's
+    # `variables` field is a true object.
+    local body
+    body="$(jq -nc --arg q "$query" --argjson p "$payload" \
+        '{query: $q, variables: $p}')"
 
-    gh api graphql \
-        --raw-field query="$query" \
-        --raw-field variables="$variables"
+    gh api graphql --input - <<<"$body"
 }
 
 response="$(submit_mutation "$(build_payload "$EXPECTED_HEAD_OID")" 2>&1 || true)"

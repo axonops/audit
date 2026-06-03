@@ -120,6 +120,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Release workflow `gh-graphql-commit.sh` now sends GraphQL
+  variables as a structured object, not a JSON-encoded string.**
+  The prior `gh api graphql --raw-field variables="$json_string"`
+  pattern sent the variables field as a stringified JSON blob; the
+  server then saw `$input` as undefined and returned
+  `Variable $input of type CreateCommitOnBranchInput! was provided
+  invalid value`. v0.2.1 release run 26915011552 surfaced this once
+  #913's diagnostic was in place. The fix builds the full request
+  body via `jq --argjson` and pipes it via `gh api graphql
+  --input -`, so `variables` is a true JSON object. (#915)
 - **Release workflow `gh-graphql-commit.sh` final jq calls now
   tolerate non-JSON in `$response`.** When `submit_mutation`
   captured stderr via `2>&1` (so the script could surface diagnostic

@@ -120,6 +120,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Release workflow `resolve_head_oid` rejects non-SHA output from
+  `gh api`.** When `gh api --jq` is called against a non-existent
+  branch ref, gh returns HTTP 404 and dumps the raw error JSON body
+  to stdout — bypassing the `--jq '.object.sha'` filter that should
+  have returned empty. Without validation, the caller's
+  `[[ -z "$OID" ]]` check failed (the error JSON is non-empty), the
+  create-branch fallback was skipped, and the GraphQL `createCommit`
+  mutation received the error JSON as `expectedHeadOid` → silent
+  exit 5 with no diagnostic. The function now validates the captured
+  value against `^[0-9a-f]{40}$` and returns empty otherwise. v0.2.1
+  release runs 26889155834 and 26894419954 both tripped this. The
+  debug-tracing scaffolding from #909 is removed in the same commit.
+  (#910)
 - **Release workflow `gh-graphql-commit.sh` now correctly parses
   multi-file `git status -z` output.** The script captured the
   NUL-delimited porcelain via `$(git status -z ...)`, but bash's

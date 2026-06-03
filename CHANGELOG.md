@@ -120,6 +120,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Release-PR branch name now uses the release-series convention
+  (`release/vX.Y.x`)** to match the `gh-graphql-commit.sh` regex
+  added in #841. The previous `release/vX.Y.Z`-style name violated
+  the script's allowlist and blocked v0.2.1 release at
+  `update-deps-pr` ("`--branch must match
+  ^release/v[0-9]+\.[0-9]+\.x$`"). v0.2.0 did not expose this — CI
+  failed upstream before `update-deps-pr` ran. (#902)
 - **Release workflow `tag-all` no longer mis-fires when CI
   cascade-skips `wait-for-pr-merge`.** The gate now uses
   `github.event_name` to disambiguate the workflow_dispatch happy

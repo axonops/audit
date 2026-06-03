@@ -120,6 +120,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **`outputconfig.Load` sanitises control bytes (NUL / C0 / C1 / DEL)
+  out of factory error messages** before they enter the
+  `outputconfig` error chain. goccy/go-yaml embeds offending source
+  bytes verbatim in its parse-error diagnostics; the prior code let
+  those bytes flow into the wrapped error string, producing
+  `unknown field "\x00"` and similar log-injection vectors. Caught
+  by `FuzzOutputConfigLoad` on the v0.2.1 release-gate 300s fuzz run
+  (3 seeds: `8acc4c4aa19b65a1`, `9959b3c68d859e06`,
+  `9987a348b3deda66`). The new `sanitizedError` wrapper preserves
+  `errors.Is` / `errors.As` via `Unwrap` so sentinels in the
+  factory error remain reachable. (#904)
 - **Release-PR branch name now uses the release-series convention
   (`release/vX.Y.x`)** to match the `gh-graphql-commit.sh` regex
   added in #841. The previous `release/vX.Y.Z`-style name violated

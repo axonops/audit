@@ -22,12 +22,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
 
 	"github.com/axonops/audit/cmd/release-tool/internal/allowlist"
 	"github.com/axonops/audit/cmd/release-tool/internal/ghclient"
@@ -207,59 +204,6 @@ func validateCommitPinnedDepsArgs(in *commitPinnedDepsArgs, stderr io.Writer) in
 // when the open(2) call refuses a symlink via O_NOFOLLOW. Callers
 // translate this into exitValidation (#910).
 var errSymlinkRefused = errors.New("path is a symlink — refusing")
-
-// readAllowedFile opens an already-allowlisted path with O_NOFOLLOW
-// and reads its full contents. This collapses the lstat + open dance
-// into a single syscall, closing the TOCTOU window where an
-// attacker could swap the regular file for a symlink between the
-// lstat and the read (#910 threat-model B2).
-//
-// The error returns errSymlinkRefused when the operating system
-// refuses to traverse the final path component because it is a
-// symlink. Linux and Darwin both surface this as syscall.ELOOP;
-// the predicate isSymlinkOpenError checks for it explicitly.
-// Defence in depth: even if a future BSD kernel returned a
-// different errno, the path drops through to "open: %w" and the
-// caller exits operational — no commit is sent.
-func readAllowedFile(workdir, path string) ([]byte, error) {
-	full := filepath.Join(workdir, path)
-	// O_NOFOLLOW on the final component is the kernel-level
-	// guarantee. O_RDONLY because we never mutate; mode 0 because
-	// we never create.
-	f, err := os.OpenFile(full, os.O_RDONLY|syscall.O_NOFOLLOW, 0) //nolint:gosec // path is allowlist-screened above
-	if err != nil {
-		if isSymlinkOpenError(err) {
-			return nil, errSymlinkRefused
-		}
-		return nil, fmt.Errorf("open: %w", err)
-	}
-	defer func() { _ = f.Close() }()
-
-	// Defence in depth: stat the open fd and refuse anything that
-	// is not a regular file (sockets, FIFOs, devices). O_NOFOLLOW
-	// already refuses symlinks; this catches everything else the
-	// allowlist might inadvertently let through if the path
-	// happens to be a special file.
-	info, err := f.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("stat: %w", err)
-	}
-	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("not a regular file (mode=%v)", info.Mode())
-	}
-
-	body, err := io.ReadAll(f)
-	if err != nil {
-		return nil, fmt.Errorf("read: %w", err)
-	}
-	return body, nil
-}
-
-// isSymlinkOpenError reports whether err looks like an
-// O_NOFOLLOW-rejected symlink (ELOOP on Linux/macOS).
-func isSymlinkOpenError(err error) bool {
-	return errors.Is(err, syscall.ELOOP)
-}
 
 // runGitStatusZ shells out to `git status -z --porcelain
 // --untracked-files=no` in workdir and parses the result.

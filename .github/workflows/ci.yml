@@ -627,6 +627,15 @@ jobs:
             infra-up: test-infra-openbao-up test-infra-vault-up
             infra-down: test-infra-openbao-down test-infra-vault-down
             timeout: 8
+          # release-tool: CLI binary behavioural specification.
+          # The test-bdd-release-tool target depends on
+          # build-release-tool, which compiles the binary the
+          # godog steps exec.
+          - suite: release-tool
+            target: test-bdd-release-tool
+            infra-up: ""
+            infra-down: ""
+            timeout: 5
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

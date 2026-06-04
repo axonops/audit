@@ -1,11 +1,12 @@
 .PHONY: test test-all test-core test-file test-syslog test-webhook test-loki test-splunk test-outputconfig test-audit-gen test-audit-validate test-bdd-report test-junit-report lint-splunk \
        test-secrets test-secrets-env test-secrets-file test-secrets-openbao test-secrets-vault \
        test-integration test-integration-file test-integration-syslog test-integration-webhook test-integration-loki test-integration-splunk test-integration-core test-integration-secrets-openbao test-integration-secrets-vault \
-       test-bdd test-bdd-core test-bdd-outputconfig test-bdd-file test-bdd-file-os test-bdd-syslog test-bdd-webhook test-bdd-loki test-bdd-fanout \
+       test-bdd test-bdd-core test-bdd-outputconfig test-bdd-file test-bdd-file-os test-bdd-syslog test-bdd-webhook test-bdd-loki test-bdd-fanout test-bdd-release-tool \
        test-bdd-verify \
        test-examples \
        lint lint-all lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-audit-validate lint-bdd-report lint-junit-report lint-examples \
-       lint-secrets lint-secrets-openbao lint-secrets-vault \
+       lint-secrets lint-secrets-openbao lint-secrets-vault lint-release-tool \
+       test-release-tool \
        check-report-parity \
        vet vet-all fmt fmt-check \
        build build-all bench bench-save bench-compare bench-baseline-check coverage \
@@ -177,7 +178,10 @@ test-secrets-env:
 test-secrets-file:
 	cd secrets/file && $(call go_test_with_junit,-race -count=1 -coverprofile=coverage.out,./...)
 
-test-all: test-core test-file test-syslog test-webhook test-loki test-splunk test-outputconfig test-audit-gen test-audit-validate test-bdd-report test-junit-report test-secrets test-secrets-env test-secrets-file test-secrets-openbao test-secrets-vault
+test-release-tool:
+	cd cmd/release-tool && $(call go_test_with_junit,-race -count=1 -coverprofile=coverage.out,./...)
+
+test-all: test-core test-file test-syslog test-webhook test-loki test-splunk test-outputconfig test-audit-gen test-audit-validate test-bdd-report test-junit-report test-secrets test-secrets-env test-secrets-file test-secrets-openbao test-secrets-vault test-release-tool
 test: test-all
 
 # --- Stress targets (#705 family) ---
@@ -331,6 +335,12 @@ test-bdd-file-os:
 test-bdd-syslog:
 	BDD_TAGS=@syslog go test -race -v -count=1 -tags=integration ./tests/bdd/...
 
+# test-bdd-release-tool drives the release-tool CLI behavioural
+# specification. The binary must be built first because the steps
+# shell out to it.
+test-bdd-release-tool: build-release-tool
+	BDD_TAGS=@release-tool go test -race -v -count=1 -tags=integration ./tests/bdd/...
+
 test-bdd-webhook:
 	BDD_TAGS="@webhook, @routing" go test -race -v -count=1 -tags=integration ./tests/bdd/...
 
@@ -483,6 +493,9 @@ lint-secrets-openbao:
 lint-secrets-vault:
 	cd secrets/vault && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
+lint-release-tool:
+	cd cmd/release-tool && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
+
 # Lint every example with its own go.mod. EXAMPLE_MODULES is
 # auto-discovered (see top of file). Replaces the single-example
 # lint-capstone target so new examples are linted without further
@@ -493,7 +506,7 @@ lint-examples:
 		(cd $$dir && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...) || exit 1; \
 	done
 
-lint-all: lint-core lint-file lint-syslog lint-webhook lint-loki lint-splunk lint-outputconfig lint-audit-gen lint-audit-validate lint-bdd-report lint-junit-report lint-secrets lint-secrets-openbao lint-secrets-vault lint-examples
+lint-all: lint-core lint-file lint-syslog lint-webhook lint-loki lint-splunk lint-outputconfig lint-audit-gen lint-audit-validate lint-bdd-report lint-junit-report lint-secrets lint-secrets-openbao lint-secrets-vault lint-release-tool lint-examples
 lint: lint-all
 
 # --- Vet ---
@@ -923,13 +936,13 @@ check-sync-comments:
 
 # --- Security ---
 
-# security runs govulncheck serially over every module. Used by
-# `make check` and by developers locally. CI fans this out across
-# a GitHub Actions matrix for ~10x wall-time reduction (#522);
-# see `security-one` below for the per-module target the matrix
-# invokes.
+# security runs govulncheck serially over every module — including
+# internal TOOL_MODULES (e.g. cmd/release-tool). Used by `make check`
+# and by developers locally. CI fans this out across a GitHub Actions
+# matrix for ~10x wall-time reduction (#522); see `security-one`
+# below for the per-module target the matrix invokes.
 security:
-	@for mod in $(MODULES); do \
+	@for mod in $(MODULES) $(TOOL_MODULES); do \
 		echo "=== security $$mod ==="; \
 		(cd $$mod && $(GOBIN)/govulncheck ./...) || exit 1; \
 	done

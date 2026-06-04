@@ -56,10 +56,7 @@ The binary lives in its own `cmd/release-tool/go.mod` module so its
 `net/http`+`slog`+`uuid` dependencies do not enter the published
 library graph.
 
-## Usage (PR-2 scope)
-
-PR-2 ships the foundation: dispatcher + four internal helper
-packages. Subcommands land in PR-3.
+## Usage
 
 ```bash
 release-tool [persistent flags] <subcommand> [subcommand flags]
@@ -78,11 +75,53 @@ release-tool [persistent flags] <subcommand> [subcommand flags]
 
 - `GH_TOKEN` (required) — the GitHub App's Installation Token. Never logged.
 
-### Subcommands (PR-3 — not yet implemented)
+### Subcommands
 
-- `commit-pinned-deps` — opens an App-signed commit pinning every
-  `go.mod` to a release version
-- `create-tag` — creates an annotated tag at a commit SHA
+#### `commit-pinned-deps`
+
+Opens an App-signed commit on a branch using the GitHub GraphQL
+`createCommitOnBranch` mutation. Reads the staged `go.mod` /
+`go.sum` files from the workdir, screens every path against the
+allowlist (rejects symlinks, refuses anything outside go.mod / go.sum
+at 0-2 levels deep), and submits them in a single mutation.
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--owner` | yes | GitHub repository owner |
+| `--repo` | yes | GitHub repository name |
+| `--branch` | yes | Target branch (e.g. `release/v0.2.2`) |
+| `--message` | yes | Commit message headline |
+| `--auto-create-branch` | no | Create the branch from `main` if missing |
+| `--workdir` | no | Path to the git working directory (default: `.`) |
+
+On success the new commit OID is written to stdout. With `--dry-run`,
+the proposed payload (path + size, never raw file contents) is
+written to stdout instead and no API mutation occurs.
+
+Regressions locked:
+- #906 / #910 — paths outside go.mod/go.sum, and any symlinked target, are refused
+- #907 — `git status -z` is consumed as an `io.Reader`, never round-tripped through `$()`
+- #911 — only 40-hex commit SHAs reach the API
+- #915 / #916 — GraphQL `variables` is a structured object, never a JSON-string-of-an-object
+
+#### `create-tag`
+
+Creates an annotated tag at a commit SHA. Strictly idempotent: if the
+tag already exists at the same SHA, exit 4 (no-op); at a different
+SHA, exit 1 (refusing to overwrite) with the operator pointed at
+the contaminating commit.
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--owner` | yes | GitHub repository owner |
+| `--repo` | yes | GitHub repository name |
+| `--tag` | yes | Tag name, e.g. `v0.2.2` |
+| `--sha` | yes | Commit SHA to point the tag at (40 lowercase hex) |
+| `--message` | yes | Tag annotation message |
+
+On success the tag OBJECT SHA is written to stdout. With `--dry-run`,
+the two proposed payloads (`POST /git/tags` and `POST /git/refs`)
+are written to stdout instead and no API mutation occurs.
 
 ## Internal packages
 
@@ -99,8 +138,9 @@ covered ≥ 85 %.
 ## See also
 
 - [Umbrella tracking issue #918](https://github.com/axonops/audit/issues/918)
-- [PR-2 scope issue #921](https://github.com/axonops/audit/issues/921)
-- [`scripts/release/`](../../scripts/release/) — the shell scripts being replaced
+- [PR-2 scope issue #921](https://github.com/axonops/audit/issues/921) — foundation + helpers
+- [PR-3 scope issue #923](https://github.com/axonops/audit/issues/923) — subcommands (this revision)
+- [`scripts/release/`](../../scripts/release/) — the shell scripts being replaced (deletion in PR-6)
 - [`docs/releasing.md`](../../docs/releasing.md) — operator-facing release playbook (updated in PR-6)
 
 [godoc-badge]: https://pkg.go.dev/badge/github.com/axonops/audit/cmd/release-tool.svg

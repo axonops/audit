@@ -66,11 +66,6 @@ const (
 	exitIdempotentNoOp = 4
 )
 
-// reservedExitCodes silences the linter for the PR-3 placeholders.
-// PR-3 will start returning these and the variable becomes
-// unnecessary at that point.
-var _ = []int{exitOperational, exitValidation, exitIdempotentNoOp}
-
 // rootFlags holds the persistent flags every subcommand inherits.
 type rootFlags struct {
 	help    bool
@@ -99,8 +94,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		"Per-request timeout for GitHub API calls.")
 
 	// Split args at the first non-flag — that's the subcommand.
-	subArgs, sub := splitSubcommand(args[1:])
-	if perr := fs.Parse(subArgs); perr != nil {
+	rootArgs, sub, subArgs := splitSubcommand(args[1:])
+	if perr := fs.Parse(rootArgs); perr != nil {
 		// fs already wrote a diagnostic.
 		return exitUsage
 	}
@@ -119,31 +114,38 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 
-	// PR-3 will register subcommand handlers here. For now any
-	// subcommand is unknown.
-	_ = ctx
+	// PR-3 subcommand dispatch. Each subcommand owns its flag set
+	// and exit-code policy.
+	switch sub {
+	case "create-tag":
+		return runCreateTag(ctx, subArgs, stdout, stderr, &rf)
+	case "commit-pinned-deps":
+		return runCommitPinnedDeps(ctx, subArgs, stdout, stderr, &rf)
+	}
+
 	_, _ = fmt.Fprintf(stderr, "release-tool: unknown subcommand %q; run --help for usage\n", sub)
 	return exitUsage
 }
 
 // splitSubcommand walks argv looking for the first non-flag token.
-// Returns (flagArgs, subcommandName). When no subcommand is present,
-// returns the full slice and "".
-func splitSubcommand(argv []string) (flagArgs []string, subcommand string) {
+// Returns (flagArgs, subcommandName, subArgs). flagArgs are the
+// persistent flags before the subcommand; subArgs are the
+// subcommand-owned tokens that follow.
+func splitSubcommand(argv []string) (flagArgs []string, subcommand string, subArgs []string) {
 	for i, a := range argv {
 		if a == "--" {
 			// Everything after `--` is positional / subcommand-owned.
 			if i+1 < len(argv) {
-				return argv[:i], argv[i+1]
+				return argv[:i], argv[i+1], argv[i+2:]
 			}
-			return argv[:i], ""
+			return argv[:i], "", nil
 		}
 		if a == "" || a[0] == '-' {
 			continue
 		}
-		return argv[:i], a
+		return argv[:i], a, argv[i+1:]
 	}
-	return argv, ""
+	return argv, "", nil
 }
 
 // versionString returns the human-readable version. When the binary
@@ -182,10 +184,15 @@ PERSISTENT FLAGS
     --help                Show this help and exit.
     --version             Print the release-tool version and exit.
 
-SUBCOMMANDS (PR-3, not yet implemented)
+SUBCOMMANDS
     commit-pinned-deps    Open an App-signed commit pinning every go.mod
-                          to a release version.
-    create-tag            Create an annotated tag on a commit SHA.
+                          to a release version, using the GitHub GraphQL
+                          createCommitOnBranch mutation. Replaces the
+                          v0.2.1 scripts/release/gh-graphql-commit.sh.
+    create-tag            Create an annotated tag at a commit SHA.
+                          Idempotent: tag-at-same-SHA exits 4 (no-op);
+                          tag-at-different-SHA exits 1 (contamination).
+                          Replaces scripts/release/gh-graphql-tag.sh.
 
 EXIT CODES
     0 — success

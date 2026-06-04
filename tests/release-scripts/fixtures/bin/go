@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Fixture go binary used by bump-example-deps tests.
+# Records every invocation's argv to $ASSERTION_DIR/go.args (one
+# line per call). Exits 0 unless $FAKE_GO_FAIL is set.
+set -euo pipefail
+if [[ -n "${ASSERTION_DIR:-}" ]]; then
+    mkdir -p "$ASSERTION_DIR"
+    printf '%s\n' "$*" >> "$ASSERTION_DIR/go.args"
+fi
+if [[ -n "${FAKE_GO_FAIL:-}" ]]; then
+    echo "fake go: forced failure" >&2
+    exit 1
+fi
+exit 0

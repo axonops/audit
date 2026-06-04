@@ -8,6 +8,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **bats-core test harness for the surviving release shell scripts
+  (#925).** PR-4 of the v0.2.2 cascade-prevention plan: a
+  subprocess-driven test suite for `check-tag-conflicts.sh`,
+  `tag-all.sh`, `update-deps.sh`, `regen-docs.sh`, and
+  `bump-example-deps.sh` (37 named tests + 3 stub-binary
+  meta-tests). Each test runs the production script against a
+  temp git repo + fake `make`/`go`/`git` binaries that record
+  their argv to an assertion file. Caught and fixed two latent
+  bugs while writing the tests: single-line `require` directives
+  were silently skipped by both `update-deps.sh:103` and
+  `bump-example-deps.sh:48` because their regexes assumed only the
+  block-form `require (...)` shape. Adds `make
+  test-release-scripts` target, wires `Test - Release Scripts` job
+  into CI's `ci-pass` aggregator, and SHA-pins the bats-core
+  install step.
 - **`cmd/release-tool` release automation binary
   (#918, #921, #923).** Replaces (in PR-6) the bash
   `gh-graphql-{commit,tag}.sh` scripts that produced 8 cascading

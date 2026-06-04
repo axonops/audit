@@ -108,6 +108,25 @@ Individual modules can be tested separately: `make test-core`,
 `make test-file`, `make test-syslog`, `make test-webhook`,
 `make test-outputconfig`, `make test-audit-gen`.
 
+### Release-script tests (bats-core)
+
+The five surviving release shell scripts in `scripts/release/`
+have their own bats-core harness in `tests/release-scripts/`.
+Unlike unit tests (which exercise Go API surfaces in-process),
+the release-script tests are subprocess-driven: each test runs
+the production shell script against a temporary git repo + fake
+`make`/`go`/`git` binaries that record their argv to an
+assertion file, so the test can grep for "did the script call X
+with Y". Install bats once (`npm install -g bats` or clone
+bats-core and `./install.sh ~/.local`) and run:
+
+```bash
+make test-release-scripts
+```
+
+See [`tests/release-scripts/README.md`](tests/release-scripts/README.md)
+for the harness conventions.
+
 This project does not use pre-commit hooks. Run `make check` before
 committing to execute the full quality gate locally.
 

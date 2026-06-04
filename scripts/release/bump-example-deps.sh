@@ -47,10 +47,16 @@ fi
 # Collect every audit-module require line. The regex requires a
 # version column on the same line — this skips comment lines like
 # "// github.com/axonops/audit/foo: deprecated" that would otherwise
-# match the prefix pattern.
+# match the prefix pattern. The optional `require` prefix matches
+# the single-line `require github.com/axonops/audit v0.1.0` form
+# in addition to the block-form `require (...)` entries (#925).
+# The trailing comma branch on $1 handles the single-line case so
+# we capture the path, not the `require` keyword.
 mapfile -t modules < <(
-  awk '/^[[:space:]]*github\.com\/axonops\/audit[a-z0-9\/_-]*[[:space:]]+v[0-9]/ {print $1}' \
-    "$EXAMPLE_DIR/go.mod" | sort -u
+  awk '
+    /^[[:space:]]*require[[:space:]]+github\.com\/axonops\/audit[a-z0-9\/_-]*[[:space:]]+v[0-9]/ {print $2; next}
+    /^[[:space:]]*github\.com\/axonops\/audit[a-z0-9\/_-]*[[:space:]]+v[0-9]/ {print $1}
+  ' "$EXAMPLE_DIR/go.mod" | sort -u
 )
 
 if [[ ${#modules[@]} -eq 0 ]]; then

@@ -95,12 +95,16 @@ for target in "${targets[@]}"; do
   pushd "$target" >/dev/null
 
   for path in "${published_paths[@]}"; do
-    # Anchored regex: the path is followed by a single space then `v`
-    # then a digit, ensuring `audit` doesn't false-positive on
-    # `audit-extra`. Comment lines are skipped because go.mod
-    # comments use `//` which doesn't satisfy the leading-whitespace
-    # + path constraint here.
-    if grep -qE "^[[:space:]]*${path}[[:space:]]v[0-9]" go.mod; then
+    # Anchored regex: optional `require` prefix (single-line form),
+    # then the path followed by a single space then `v` then a
+    # digit. The optional prefix is the bug fix for #925 — without
+    # it, the single-line `require github.com/x v0.1.0` form was
+    # silently skipped because `require` appeared before the path.
+    # `audit` doesn't false-positive on `audit-extra` because the
+    # path is followed by whitespace + `v` + digit. Comment lines
+    # are skipped because go.mod comments use `//` which doesn't
+    # satisfy the path constraint here.
+    if grep -qE "^[[:space:]]*(require[[:space:]]+)?${path}[[:space:]]v[0-9]" go.mod; then
       go mod edit -require "${path}@${VERSION}"
       echo "  pinned $path → $VERSION"
       # Strip any existing go.sum entries for this path so they

@@ -162,3 +162,6 @@ examples/*/*.log
 /file-emfile-runner
 /file-enospc-runner
 bin/
+
+# bats-core fixture stubs ARE source — track them.
+!tests/release-scripts/fixtures/bin/

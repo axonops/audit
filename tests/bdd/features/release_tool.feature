@@ -8,7 +8,7 @@ Feature: release-tool CLI behaviour
     Given the release-tool binary has been built
 
   # ----------------------------------------------------------------
-  # Persistent flag surface
+  # Persistent flag surface — fast usage gates
   # ----------------------------------------------------------------
 
   Scenario: --help prints the usage block to stderr and exits 0
@@ -34,6 +34,51 @@ Feature: release-tool CLI behaviour
     And the stderr contains "no subcommand"
 
   # ----------------------------------------------------------------
+  # commit-pinned-deps subcommand
+  # ----------------------------------------------------------------
+
+  Scenario: commit-pinned-deps with missing required flags exits 2
+    When I run release-tool with arguments "commit-pinned-deps --owner axonops"
+    Then the exit code is 2
+    And the stderr contains "missing required flag"
+
+  Scenario: commit-pinned-deps creates an App-signed commit
+    Given a staged go.mod in a fresh git repo
+    And the GH_API_URL points at a server that accepts the GraphQL mutation
+    When I run release-tool commit-pinned-deps against that server
+    Then the exit code is 0
+    And the stdout is exactly the captured commit OID
+
+  Scenario: commit-pinned-deps rejects a non-go.mod file in the staged tree
+    Given a staged ".github/workflows/release.yml" in a fresh git repo
+    And the GH_API_URL points at a server that fails on any request
+    When I run release-tool commit-pinned-deps against that server
+    Then the exit code is 3
+    And the stderr contains "rejected by allowlist"
+
+  Scenario: commit-pinned-deps rejects a symlinked go.mod
+    Given a symlinked go.mod in a fresh git repo
+    And the GH_API_URL points at a server that fails on any request
+    When I run release-tool commit-pinned-deps against that server
+    Then the exit code is 3
+    And the stderr contains "symlink"
+
+  Scenario: commit-pinned-deps with --dry-run prints the payload and does not call the API
+    Given a staged go.mod in a fresh git repo
+    And the GH_API_URL points at a server that succeeds on idempotency lookups but fails on any mutation
+    When I run release-tool commit-pinned-deps with --dry-run against that server
+    Then the exit code is 0
+    And the stdout decodes as JSON containing "createCommitOnBranch"
+    And the server received zero mutation requests
+
+  Scenario: commit-pinned-deps with --auto-create-branch creates the branch from main
+    Given a staged go.mod in a fresh git repo
+    And the GH_API_URL points at a server where the release branch does not exist
+    When I run release-tool commit-pinned-deps with --auto-create-branch against that server
+    Then the exit code is 0
+    And the server received a CreateRef call for the release branch
+
+  # ----------------------------------------------------------------
   # create-tag subcommand
   # ----------------------------------------------------------------
 
@@ -43,11 +88,6 @@ Feature: release-tool CLI behaviour
     And the stderr contains "missing required flag"
 
   Scenario: create-tag refuses a non-40-hex SHA — #911 regression
-    # The --sha argument here is the EXACT 404 JSON body that bash
-    # versions accepted as a SHA. The docstring preserves every
-    # character (double quotes, braces) verbatim — splitShellLike
-    # only sees the literal token "{message:NotFound}" as the SHA,
-    # which is still emphatically not 40 hex chars.
     When I run release-tool with these args:
       """
       create-tag
@@ -60,27 +100,32 @@ Feature: release-tool CLI behaviour
     Then the exit code is 3
     And the stderr contains "40 lowercase hex"
 
-  # ----------------------------------------------------------------
-  # commit-pinned-deps subcommand
-  # ----------------------------------------------------------------
-
-  Scenario: commit-pinned-deps with missing required flags exits 2
-    When I run release-tool with arguments "commit-pinned-deps --owner axonops"
-    Then the exit code is 2
-    And the stderr contains "missing required flag"
-
-  # ----------------------------------------------------------------
-  # Happy path — covered via --dry-run so the scenario never makes
-  # a real network call (test-analyst N1). Dry-run only short-
-  # circuits AFTER the existing-ref lookup, so we point --owner /
-  # --repo at "dry-run/dry-run" — release-tool's no-network path
-  # rejects the upfront flag-shape gate first (regex refuses the
-  # leading hyphen / structurally invalid forms), then validates
-  # the SHA shape, and only then would hit the API. With a valid-
-  # SHA / valid-flag combination the tool still tries to reach
-  # api.github.com — which is why this scenario asserts the
-  # validation-only contract (exit 3 on a bad SHA), and not exit 0.
   Scenario: create-tag refuses a structurally invalid branch-like tag
     When I run release-tool with arguments "create-tag --owner axonops --repo audit --tag .. --sha abcdef0123456789abcdef0123456789abcdef01 --message Release"
     Then the exit code is 3
     And the stderr contains "structurally invalid"
+
+  Scenario: create-tag at a fresh tag creates the tag object + ref
+    Given the GH_API_URL points at a server where the tag does not exist
+    When I run release-tool create-tag against that server
+    Then the exit code is 0
+    And the stdout is exactly the captured tag-object SHA
+
+  Scenario: create-tag re-run at the same SHA exits 4 idempotently
+    Given the GH_API_URL points at a server where the tag exists at the same SHA
+    When I run release-tool create-tag against that server
+    Then the exit code is 4
+    And the stderr contains "no-op"
+
+  Scenario: create-tag re-run at a different SHA exits 1 with a contamination error
+    Given the GH_API_URL points at a server where the tag exists at a different SHA
+    When I run release-tool create-tag against that server
+    Then the exit code is 1
+    And the stderr contains "refusing to overwrite"
+
+  Scenario: create-tag with --dry-run prints the payloads and does not call the API
+    Given the GH_API_URL points at a server where the tag does not exist and any mutation fails the test
+    When I run release-tool create-tag with --dry-run against that server
+    Then the exit code is 0
+    And the stdout decodes as JSON containing "tag_object"
+    And the server received zero mutation requests

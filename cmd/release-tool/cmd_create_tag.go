@@ -271,15 +271,27 @@ func writeDryRunCreateTag(stdout io.Writer, owner, repo, tag, commit, message st
 
 // buildClient constructs a ghclient.Client using the persistent
 // flags. Returns the appropriate exit code on failure.
+//
+// Environment:
+//   - GH_TOKEN (required): App Installation Token. Never logged.
+//   - GH_API_URL (optional): override the GitHub API base URL.
+//     Used by BDD scenarios that drive the binary against an
+//     httptest server. NOT for production use — pointing this at
+//     anything other than api.github.com routes App-signed
+//     mutations through an untrusted endpoint.
 func buildClient(persistent *rootFlags, stderr io.Writer) (client *ghclient.Client, exit int) {
 	token := os.Getenv("GH_TOKEN")
 	if token == "" {
 		_, _ = fmt.Fprintln(stderr, "release-tool: GH_TOKEN environment variable is required")
 		return nil, exitOperational
 	}
-	c, err := ghclient.New(token,
+	opts := []ghclient.Option{
 		ghclient.WithHTTPClient(&http.Client{Timeout: persistent.timeout}),
-	)
+	}
+	if base := os.Getenv("GH_API_URL"); base != "" {
+		opts = append(opts, ghclient.WithBaseURL(base))
+	}
+	c, err := ghclient.New(token, opts...)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "release-tool: ghclient init: %v\n", err)
 		return nil, exitOperational

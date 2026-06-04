@@ -17,12 +17,16 @@ package steps
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 
 	"github.com/cucumber/godog"
 )
@@ -30,10 +34,16 @@ import (
 // releaseToolState is private to the release-tool BDD scenarios.
 // A fresh instance is created per scenario by registerReleaseToolSteps.
 type releaseToolState struct {
-	binaryPath string
-	stdout     bytes.Buffer
-	stderr     bytes.Buffer
-	exitCode   int
+	server      *httptest.Server // pointer (8) — set when scenarios start a fake GH API
+	binaryPath  string           // path to bin/release-tool
+	gitRepo     string           // temp dir with `git init` for commit-pinned-deps scenarios
+	capturedOID string           // OID returned by the fake GraphQL server
+	capturedTag string           // tag-object SHA returned by the fake REST server
+	stdout      bytes.Buffer
+	stderr      bytes.Buffer
+	mutations   atomic.Int32 // mutation-endpoint hit counter
+	createRefs  atomic.Int32 // POST /git/refs hit counter (for auto-create-branch)
+	exitCode    int
 }
 
 // registerReleaseToolSteps registers the Gherkin steps that drive the
@@ -55,12 +65,25 @@ func registerReleaseToolSteps(ctx *godog.ScenarioContext, _ *AuditTestContext) {
 		s = &releaseToolState{}
 		return c, nil
 	})
+	ctx.After(func(c context.Context, _ *godog.Scenario, _ error) (context.Context, error) {
+		if s.server != nil {
+			s.server.Close()
+		}
+		return c, nil
+	})
 
+	registerCoreSteps(ctx, func() *releaseToolState { return s })
+	registerFixtureSteps(ctx, func() *releaseToolState { return s })
+	registerServerSteps(ctx, func() *releaseToolState { return s })
+	registerInvocationSteps(ctx, func() *releaseToolState { return s })
+	registerAssertionSteps(ctx, func() *releaseToolState { return s })
+}
+
+// registerCoreSteps wires the persistent-flag scenarios that don't
+// need a fake server or git repo.
+func registerCoreSteps(ctx *godog.ScenarioContext, get func() *releaseToolState) {
 	ctx.Given(`^the release-tool binary has been built$`, func() error {
-		// We expect the binary at <repo>/bin/release-tool, built by
-		// `make build-release-tool`. The BDD harness can not perform
-		// the build itself (no go.mod boundary to lean on); the
-		// surrounding make target handles it.
+		s := get()
 		repoRoot, err := findRepoRoot()
 		if err != nil {
 			return err
@@ -74,35 +97,162 @@ func registerReleaseToolSteps(ctx *godog.ScenarioContext, _ *AuditTestContext) {
 	})
 
 	ctx.When(`^I run release-tool with arguments "([^"]*)"$`, func(argStr string) error {
-		return s.run(argStr)
+		return get().run(argStr)
 	})
-
 	ctx.When(`^I run release-tool with these args:$`, func(doc *godog.DocString) error {
-		return s.runWithRawArgs(doc.Content)
+		return get().runWithRawArgs(doc.Content)
 	})
-
 	ctx.When(`^I run release-tool with no arguments$`, func() error {
-		return s.run("")
+		return get().run("")
 	})
 
 	ctx.Then(`^the exit code is (\d+)$`, func(want int) error {
+		s := get()
 		if s.exitCode != want {
 			return fmt.Errorf("exit code: want %d, got %d (stderr=%q)",
 				want, s.exitCode, s.stderr.String())
 		}
 		return nil
 	})
-
 	ctx.Then(`^the stderr contains "([^"]*)"$`, func(needle string) error {
+		s := get()
 		if !strings.Contains(s.stderr.String(), needle) {
 			return fmt.Errorf("stderr missing %q\n--- stderr ---\n%s", needle, s.stderr.String())
 		}
 		return nil
 	})
-
 	ctx.Then(`^the stdout starts with "([^"]*)"$`, func(prefix string) error {
+		s := get()
 		if !strings.HasPrefix(s.stdout.String(), prefix) {
 			return fmt.Errorf("stdout prefix: want %q, got %q", prefix, s.stdout.String())
+		}
+		return nil
+	})
+}
+
+// registerFixtureSteps wires the Given-side filesystem fixtures
+// (staged go.mod, off-allowlist path, symlink).
+func registerFixtureSteps(ctx *godog.ScenarioContext, get func() *releaseToolState) {
+	ctx.Given(`^a staged go.mod in a fresh git repo$`, func() error {
+		return get().stageFile("go.mod", []byte("module example.com\n"))
+	})
+	ctx.Given(`^a staged ".github/workflows/release.yml" in a fresh git repo$`, func() error {
+		return get().stageFile(".github/workflows/release.yml", []byte("# off-allowlist\n"))
+	})
+	ctx.Given(`^a symlinked go.mod in a fresh git repo$`, func() error {
+		s := get()
+		if err := s.ensureRepo(); err != nil {
+			return err
+		}
+		target := filepath.Join(s.gitRepo, "real-target.txt")
+		if err := os.WriteFile(target, []byte("secret\n"), 0o600); err != nil {
+			return fmt.Errorf("write target: %w", err)
+		}
+		if err := os.Symlink("real-target.txt", filepath.Join(s.gitRepo, "go.mod")); err != nil {
+			return fmt.Errorf("symlink: %w", err)
+		}
+		return s.gitAdd("go.mod")
+	})
+}
+
+// registerServerSteps wires the Given-side httptest fake-server
+// configurations.
+func registerServerSteps(ctx *godog.ScenarioContext, get func() *releaseToolState) {
+	ctx.Given(`^the GH_API_URL points at a server that accepts the GraphQL mutation$`, func() error {
+		get().startCommitServer(serverProfileCommitAccept)
+		return nil
+	})
+	ctx.Given(`^the GH_API_URL points at a server that fails on any request$`, func() error {
+		get().startCommitServer(serverProfileFailAny)
+		return nil
+	})
+	ctx.Given(`^the GH_API_URL points at a server that succeeds on idempotency lookups but fails on any mutation$`, func() error {
+		get().startCommitServer(serverProfileDryRun)
+		return nil
+	})
+	ctx.Given(`^the GH_API_URL points at a server where the release branch does not exist$`, func() error {
+		get().startCommitServer(serverProfileAutoCreate)
+		return nil
+	})
+	ctx.Given(`^the GH_API_URL points at a server where the tag does not exist$`, func() error {
+		get().startCreateTagServer(serverProfileTagFresh)
+		return nil
+	})
+	ctx.Given(`^the GH_API_URL points at a server where the tag does not exist and any mutation fails the test$`, func() error {
+		get().startCreateTagServer(serverProfileTagDryRun)
+		return nil
+	})
+	ctx.Given(`^the GH_API_URL points at a server where the tag exists at the same SHA$`, func() error {
+		get().startCreateTagServer(serverProfileTagSameSHA)
+		return nil
+	})
+	ctx.Given(`^the GH_API_URL points at a server where the tag exists at a different SHA$`, func() error {
+		get().startCreateTagServer(serverProfileTagDifferentSHA)
+		return nil
+	})
+}
+
+// registerInvocationSteps wires the When-side subcommand
+// invocations that drive the binary against the configured server.
+func registerInvocationSteps(ctx *godog.ScenarioContext, get func() *releaseToolState) {
+	ctx.When(`^I run release-tool commit-pinned-deps against that server$`, func() error {
+		return get().runCommitPinnedDeps(false)
+	})
+	ctx.When(`^I run release-tool commit-pinned-deps with --dry-run against that server$`, func() error {
+		return get().runCommitPinnedDeps(true)
+	})
+	ctx.When(`^I run release-tool commit-pinned-deps with --auto-create-branch against that server$`, func() error {
+		return get().runCommitPinnedDepsAutoCreate()
+	})
+	ctx.When(`^I run release-tool create-tag against that server$`, func() error {
+		return get().runCreateTag(false)
+	})
+	ctx.When(`^I run release-tool create-tag with --dry-run against that server$`, func() error {
+		return get().runCreateTag(true)
+	})
+}
+
+// registerAssertionSteps wires the Then-side assertions on stdout,
+// stderr, and server-side mutation counters.
+func registerAssertionSteps(ctx *godog.ScenarioContext, get func() *releaseToolState) {
+	ctx.Then(`^the stdout is exactly the captured commit OID$`, func() error {
+		s := get()
+		want := s.capturedOID + "\n"
+		if s.stdout.String() != want {
+			return fmt.Errorf("stdout: want %q, got %q", want, s.stdout.String())
+		}
+		return nil
+	})
+	ctx.Then(`^the stdout is exactly the captured tag-object SHA$`, func() error {
+		s := get()
+		want := s.capturedTag + "\n"
+		if s.stdout.String() != want {
+			return fmt.Errorf("stdout: want %q, got %q", want, s.stdout.String())
+		}
+		return nil
+	})
+	ctx.Then(`^the stdout decodes as JSON containing "([^"]*)"$`, func(needle string) error {
+		s := get()
+		var v any
+		if err := json.Unmarshal(s.stdout.Bytes(), &v); err != nil {
+			return fmt.Errorf("stdout must be valid JSON: %w (stdout=%s)", err, s.stdout.String())
+		}
+		if !strings.Contains(s.stdout.String(), needle) {
+			return fmt.Errorf("stdout JSON missing %q\n%s", needle, s.stdout.String())
+		}
+		return nil
+	})
+	ctx.Then(`^the server received zero mutation requests$`, func() error {
+		s := get()
+		if got := s.mutations.Load(); got != 0 {
+			return fmt.Errorf("dry-run must perform zero mutating calls, got %d", got)
+		}
+		return nil
+	})
+	ctx.Then(`^the server received a CreateRef call for the release branch$`, func() error {
+		s := get()
+		if got := s.createRefs.Load(); got == 0 {
+			return errors.New("auto-create-branch must call POST /git/refs at least once")
 		}
 		return nil
 	})
@@ -151,6 +301,12 @@ func (s *releaseToolState) run(argStr string) error {
 // exec is the shared subprocess execution path used by both `run`
 // (whitespace-split args) and `runWithRawArgs` (one-arg-per-line).
 func (s *releaseToolState) exec(args []string) error {
+	return s.execEnv(args, nil)
+}
+
+// execEnv is like exec but appends extra env vars. Used by the
+// orchestration scenarios to inject GH_API_URL.
+func (s *releaseToolState) execEnv(args, extraEnv []string) error {
 	// G204 is satisfied: s.binaryPath is `<repo>/bin/release-tool`,
 	// constructed by findRepoRoot (which walks the local filesystem
 	// looking for the audit go.mod) — not influenced by external
@@ -162,6 +318,7 @@ func (s *releaseToolState) exec(args []string) error {
 	// Set GH_TOKEN to a stub so buildClient gets past the env
 	// check; tests assert exit codes BEFORE any HTTP call is made.
 	cmd.Env = append(cmd.Environ(), "GH_TOKEN=stub-token-for-bdd")
+	cmd.Env = append(cmd.Env, extraEnv...)
 
 	err := cmd.Run()
 	if exitErr, ok := asExitError(err); ok {
@@ -173,6 +330,201 @@ func (s *releaseToolState) exec(args []string) error {
 	}
 	s.exitCode = 0
 	return nil
+}
+
+// --- Orchestration helpers ---
+
+// fakeBranchHead / fakeCommitOID / fakeTagSHA are the canonical
+// "happy-path" SHAs the fake servers return.
+const (
+	fakeBranchHead = "feedface0000000000000000000000000000feed"
+	fakeCommitOID  = "cafebabe0000000000000000000000000000cafe"
+	fakeTagSHA     = "9999999999999999999999999999999999999999"
+	fakeTagCommit  = "abcdef0123456789abcdef0123456789abcdef01"
+	fakeOtherSHA   = "0123456789abcdef0123456789abcdef01234567"
+)
+
+type serverProfile int
+
+const (
+	serverProfileCommitAccept serverProfile = iota
+	serverProfileFailAny
+	serverProfileDryRun
+	serverProfileAutoCreate
+	serverProfileTagFresh
+	serverProfileTagSameSHA
+	serverProfileTagDifferentSHA
+	serverProfileTagDryRun
+)
+
+// ensureRepo lazily initialises s.gitRepo with `git init` so the
+// scenario can stage files via gitAdd.
+func (s *releaseToolState) ensureRepo() error {
+	if s.gitRepo != "" {
+		return nil
+	}
+	dir, err := os.MkdirTemp("", "release-tool-bdd-*")
+	if err != nil {
+		return fmt.Errorf("mkdtemp: %w", err)
+	}
+	s.gitRepo = dir
+	for _, args := range [][]string{
+		{"init", "--quiet"},
+		{"config", "user.email", "test@example.com"},
+		{"config", "user.name", "Test User"},
+		{"commit", "--allow-empty", "-m", "init"},
+	} {
+		c := exec.Command("git", append([]string{"-C", dir}, args...)...) //nolint:gosec // tempdir
+		c.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+		if out, err := c.CombinedOutput(); err != nil {
+			return fmt.Errorf("git %v: %w (output=%s)", args, err, out)
+		}
+	}
+	return nil
+}
+
+// stageFile writes a file (relative to s.gitRepo) and `git add`s it.
+func (s *releaseToolState) stageFile(rel string, content []byte) error {
+	if err := s.ensureRepo(); err != nil {
+		return err
+	}
+	full := filepath.Join(s.gitRepo, rel)
+	if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
+		return fmt.Errorf("mkdir: %w", err)
+	}
+	if err := os.WriteFile(full, content, 0o600); err != nil {
+		return fmt.Errorf("write: %w", err)
+	}
+	return s.gitAdd(rel)
+}
+
+// gitAdd stages rel inside s.gitRepo.
+func (s *releaseToolState) gitAdd(rel string) error {
+	c := exec.Command("git", "-C", s.gitRepo, "add", rel) //nolint:gosec // tempdir + checked-in fixture
+	c.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+	if out, err := c.CombinedOutput(); err != nil {
+		return fmt.Errorf("git add %s: %w (output=%s)", rel, err, out)
+	}
+	return nil
+}
+
+// startCommitServer wires up the fake GH server for commit-pinned-deps.
+func (s *releaseToolState) startCommitServer(p serverProfile) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/repos/axonops/audit/git/ref/heads/release/v0.2.2", func(w http.ResponseWriter, r *http.Request) {
+		switch p { //nolint:exhaustive // tag-profile cases never hit this commit endpoint
+		case serverProfileFailAny:
+			w.WriteHeader(http.StatusInternalServerError)
+		case serverProfileAutoCreate:
+			w.WriteHeader(http.StatusNotFound)
+		default:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ref":"refs/heads/release/v0.2.2","object":{"sha":"` + fakeBranchHead + `","type":"commit"}}`))
+		}
+	})
+	mux.HandleFunc("/repos/axonops/audit/git/ref/heads/main", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ref":"refs/heads/main","object":{"sha":"` + fakeBranchHead + `","type":"commit"}}`))
+	})
+	mux.HandleFunc("/repos/axonops/audit/git/refs", func(w http.ResponseWriter, r *http.Request) {
+		s.createRefs.Add(1)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"ref":"refs/heads/release/v0.2.2","object":{"sha":"` + fakeBranchHead + `","type":"commit"}}`))
+	})
+	mux.HandleFunc("/graphql", func(w http.ResponseWriter, r *http.Request) {
+		s.mutations.Add(1)
+		if p == serverProfileFailAny || p == serverProfileDryRun {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		s.capturedOID = fakeCommitOID
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":{"createCommitOnBranch":{"commit":{"oid":"` + fakeCommitOID + `","url":""}}}}`))
+	})
+	s.server = httptest.NewServer(mux)
+}
+
+// startCreateTagServer wires up the fake GH server for create-tag.
+func (s *releaseToolState) startCreateTagServer(p serverProfile) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/repos/axonops/audit/git/ref/tags/v0.2.2", func(w http.ResponseWriter, r *http.Request) {
+		switch p { //nolint:exhaustive // commit-profile cases never hit this tag endpoint
+		case serverProfileTagSameSHA:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ref":"refs/tags/v0.2.2","object":{"sha":"` + fakeTagCommit + `","type":"commit"}}`))
+		case serverProfileTagDifferentSHA:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ref":"refs/tags/v0.2.2","object":{"sha":"` + fakeOtherSHA + `","type":"commit"}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+	mux.HandleFunc("/repos/axonops/audit/git/tags", func(w http.ResponseWriter, r *http.Request) {
+		s.mutations.Add(1)
+		if p == serverProfileTagDryRun {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		s.capturedTag = fakeTagSHA
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"sha":"` + fakeTagSHA + `","tag":"v0.2.2"}`))
+	})
+	mux.HandleFunc("/repos/axonops/audit/git/refs", func(w http.ResponseWriter, r *http.Request) {
+		s.mutations.Add(1)
+		if p == serverProfileTagDryRun {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"ref":"refs/tags/v0.2.2","object":{"sha":"` + fakeTagSHA + `","type":"tag"}}`))
+	})
+	s.server = httptest.NewServer(mux)
+}
+
+// runCommitPinnedDeps invokes the subcommand against s.server with
+// s.gitRepo as the workdir.
+func (s *releaseToolState) runCommitPinnedDeps(dryRun bool) error {
+	args := []string{}
+	if dryRun {
+		args = append(args, "--dry-run")
+	}
+	args = append(args,
+		"commit-pinned-deps",
+		"--owner", "axonops", "--repo", "audit",
+		"--branch", "release/v0.2.2",
+		"--message", "chore: pin deps for BDD",
+		"--workdir", s.gitRepo,
+	)
+	return s.execEnv(args, []string{"GH_API_URL=" + s.server.URL})
+}
+
+// runCommitPinnedDepsAutoCreate runs with --auto-create-branch.
+func (s *releaseToolState) runCommitPinnedDepsAutoCreate() error {
+	args := []string{
+		"commit-pinned-deps",
+		"--owner", "axonops", "--repo", "audit",
+		"--branch", "release/v0.2.2",
+		"--message", "chore: pin deps for BDD",
+		"--workdir", s.gitRepo,
+		"--auto-create-branch",
+	}
+	return s.execEnv(args, []string{"GH_API_URL=" + s.server.URL})
+}
+
+// runCreateTag invokes the subcommand against s.server.
+func (s *releaseToolState) runCreateTag(dryRun bool) error {
+	args := []string{}
+	if dryRun {
+		args = append(args, "--dry-run")
+	}
+	args = append(args,
+		"create-tag",
+		"--owner", "axonops", "--repo", "audit",
+		"--tag", "v0.2.2",
+		"--sha", fakeTagCommit,
+		"--message", "Release v0.2.2",
+	)
+	return s.execEnv(args, []string{"GH_API_URL=" + s.server.URL})
 }
 
 // splitShellLike splits a string on whitespace, respecting single and

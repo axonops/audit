@@ -25,6 +25,43 @@ import (
 	"github.com/axonops/audit/cmd/release-tool/internal/ghclient"
 )
 
+// runCreateTagTestHookCtx is the ctx-accepting variant used by the
+// AC10 context-cancellation regression test (Test_AC10_TimeoutCancelsInflight).
+// Production runCreateTag derives its ctx from main; tests need to
+// inject a cancellable parent.
+func runCreateTagTestHookCtx(ctx context.Context, baseURL string, stdout, stderr *bytes.Buffer, args []string) int {
+	fs := flag.NewFlagSet("create-tag", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+
+	in := createTagArgs{}
+	var dryRun bool
+	fs.BoolVar(&dryRun, "dry-run", false, "")
+	fs.StringVar(&in.owner, "owner", "", "")
+	fs.StringVar(&in.repo, "repo", "", "")
+	fs.StringVar(&in.tag, "tag", "", "")
+	fs.StringVar(&in.commit, "sha", "", "")
+	fs.StringVar(&in.message, "message", "", "")
+
+	if err := fs.Parse(args); err != nil {
+		return exitUsage
+	}
+	in.dryRun = dryRun
+
+	if code := validateCreateTagArgs(&in, stderr); code != exitSuccess {
+		return code
+	}
+
+	client, err := ghclient.New("stub-token",
+		ghclient.WithBaseURL(baseURL),
+		ghclient.WithHTTPClient(&http.Client{}),
+		ghclient.WithLogger(silentLogger()),
+	)
+	if err != nil {
+		return exitOperational
+	}
+	return doCreateTag(ctx, client, &in, stdout, stderr)
+}
+
 // runCreateTagTestHook drives doCreateTag against a httptest server
 // without going through the production GH_TOKEN / api.github.com
 // path. It parses the same flag surface runCreateTag does so we

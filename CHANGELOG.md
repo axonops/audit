@@ -8,29 +8,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **Initial scaffold for `cmd/release-tool` release automation binary
-  (#918).** Replaces (in PR-6) the bash `gh-graphql-{commit,tag}.sh`
-  scripts that produced 7 cascading bugs in v0.2.1. PR-2 lays the
-  foundation: typed `ghclient` (3 GitHub API endpoints over
-  `net/http` + slog with Authorization-header redaction + per-call
-  request-ID), NUL-safe `gitstatus` parser, `allowlist` for
-  go.mod/go.sum-only enforcement, and strict 40-hex-char `sha`
-  validator. The binary is in its own `cmd/release-tool/go.mod`
-  module — not published to consumers.
-- **`release-tool` subcommands `commit-pinned-deps` and `create-tag`
-  (#923).** PR-3 lands the two release-flow operations on top of the
-  PR-2 foundation. `commit-pinned-deps` orchestrates `git status -z`
-  + allowlist + symlink guard + the GraphQL `createCommitOnBranch`
-  mutation; `create-tag` does an idempotent two-step REST tag-object
-  + ref creation, with same-SHA re-runs exiting 4 (no-op) and
+- **`cmd/release-tool` release automation binary
+  (#918, #921, #923).** Replaces (in PR-6) the bash
+  `gh-graphql-{commit,tag}.sh` scripts that produced 8 cascading
+  bugs in v0.2.1. PR-2 (#921) laid the foundation: typed `ghclient`
+  (3 GitHub API endpoints over `net/http` + slog with
+  Authorization-header redaction + per-call request-ID), NUL-safe
+  `gitstatus` parser, `allowlist` for go.mod/go.sum-only
+  enforcement, and strict 40-hex-char `sha` validator. PR-3 (#923)
+  lands the two subcommands that drive the actual release flow:
+  `commit-pinned-deps` orchestrates `git status -z` + allowlist +
+  atomic O_NOFOLLOW symlink guard + the GraphQL
+  `createCommitOnBranch` mutation; `create-tag` does an idempotent
+  two-step REST tag-object + ref creation with annotated-tag
+  dereferencing, same-SHA re-runs exiting 4 (no-op) and
   different-SHA re-runs exiting 1 (refusing to overwrite). Both
-  subcommands ship with named regression tests covering #906
-  (off-allowlist paths refused), #907 (NUL-delimited git-status
-  parsed via `io.Reader` so 18+ files don't collapse), #910 (symlink
-  refused), #911 (only 40-hex SHAs accepted), and #915/#916
-  (GraphQL variables sent as a structured object, never a JSON
-  string). Both honour `--dry-run` to emit the proposed API payload
-  without performing the mutation.
+  subcommands honour `--dry-run` to emit the proposed API payload
+  without performing the mutation, and propagate the persistent
+  `--timeout` flag through `context.Context` so SIGINT cancels
+  in-flight API calls. Named regression tests cover every v0.2.1
+  cascade bug (#900, #902, #906, #910, #911, #915, #916) plus
+  bypass-by-design markers for the bash-impedance class (#904,
+  #908, #913, #914). The binary is in its own
+  `cmd/release-tool/go.mod` module — not published to consumers.
 - **Encrypted PKCS#8 v2 client private keys via
   `tls.key_password`.** Every TLS-bearing block (webhook, loki,
   splunk, syslog, vault, openbao) gains an optional

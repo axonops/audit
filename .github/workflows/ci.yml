@@ -727,10 +727,13 @@ jobs:
       - name: Install bats-core (SHA-pinned)
         shell: bash
         env:
-          # Pinned to bats-core v1.13.0 (commit SHA from the
-          # tag). When bumping, verify the SHA via:
-          #   gh api repos/bats-core/bats-core/git/refs/tags/v1.X.Y
-          BATS_REF: 70ad9d4e2c1bcdf52ab19abbd7e3e54ff3d40d5d
+          # Pinned to bats-core v1.13.0 — commit
+          # d6a46f2cc2d3025ee3ffb59991c6d93ef903e339. When bumping,
+          # verify with:
+          #   git -C /tmp clone --depth=1 -b vX.Y.Z \
+          #     https://github.com/bats-core/bats-core && \
+          #   git -C /tmp/bats-core rev-parse vX.Y.Z
+          BATS_REF: d6a46f2cc2d3025ee3ffb59991c6d93ef903e339
         run: |
           set -euo pipefail
           git clone --quiet https://github.com/bats-core/bats-core /tmp/bats-core

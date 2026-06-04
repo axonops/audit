@@ -59,6 +59,7 @@ MAIN_RUNNERS=(
     "splunk|@splunk && ~@fanout && ~@stub && ~@appinspect"
     "splunk-stub|@splunk && @stub"
     "splunk-appinspect|@appinspect"
+    "release-tool|@release-tool"
 )
 
 # The outputconfig suite runs all scenarios (no tag filter) in its own module.

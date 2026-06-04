@@ -45,7 +45,13 @@ MODULES           := . file iouring syslog webhook loki splunk outputconfig outp
 # examples are picked up without touching the Makefile. Sorted for
 # deterministic workspace generation.
 EXAMPLE_MODULES   := $(sort $(patsubst %/go.mod,%,$(wildcard examples/*/go.mod)))
-WORKSPACE_MODULES := $(MODULES) $(EXAMPLE_MODULES)
+# TOOL_MODULES are repo-internal binaries (not published to consumers).
+# They live in the go.work for editor / test purposes but are
+# intentionally NOT in MODULES, so they are skipped by every CI step
+# that iterates over published modules (test, lint, security, tidy,
+# api-check, release tag-all, etc).
+TOOL_MODULES      := cmd/release-tool
+WORKSPACE_MODULES := $(MODULES) $(EXAMPLE_MODULES) $(TOOL_MODULES)
 # `go env GOPATH` returns Windows-style paths on Windows
 # (e.g. C:\Users\runneradmin\go); when interpolated into bash recipes
 # the backslashes are interpreted as escape characters and stripped,
@@ -524,6 +530,16 @@ build-all:
 		(cd $$mod && GOOS=windows GOARCH=amd64 go build ./...) || exit 1; \
 	done
 build: build-all
+
+# build-release-tool builds the cmd/release-tool binary into ./bin/.
+# Invoked by .github/workflows/release.yml in PR-6 (umbrella #918);
+# operators can also build it locally for dry-run inspection. The
+# binary is tiny (~6 MB) and built with -trimpath for reproducibility.
+.PHONY: build-release-tool
+build-release-tool:
+	@mkdir -p bin
+	@cd cmd/release-tool && go build -trimpath -o $(CURDIR)/bin/release-tool .
+	@echo "built bin/release-tool ($$(du -h bin/release-tool | cut -f1))"
 
 # --- Benchmarks ---
 

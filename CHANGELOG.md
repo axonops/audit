@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Initial scaffold for `cmd/release-tool` release automation binary
+  (#918).** Replaces (in PR-6) the bash `gh-graphql-{commit,tag}.sh`
+  scripts that produced 7 cascading bugs in v0.2.1. PR-2 lays the
+  foundation: typed `ghclient` (3 GitHub API endpoints over
+  `net/http` + slog with Authorization-header redaction + per-call
+  request-ID), NUL-safe `gitstatus` parser, `allowlist` for
+  go.mod/go.sum-only enforcement, and strict 40-hex-char `sha`
+  validator. PR-3 adds the `commit-pinned-deps` and `create-tag`
+  subcommands. The binary is in its own `cmd/release-tool/go.mod`
+  module — not published to consumers.
 - **Encrypted PKCS#8 v2 client private keys via
   `tls.key_password`.** Every TLS-bearing block (webhook, loki,
   splunk, syslog, vault, openbao) gains an optional

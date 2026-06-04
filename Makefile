@@ -1285,7 +1285,7 @@ install-govulncheck:
 
 # --- Full local quality gate ---
 
-check: vet-all lint-all test-all build-all test-examples verify check-static check-report-parity release-check security
+check: vet-all lint-all test-all test-release-scripts build-all test-examples verify check-static check-report-parity release-check security
 	@echo ""
 	@echo "All checks passed."
 

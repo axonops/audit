@@ -288,4 +288,5 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerLastDeliveryAgeSteps(ctx, tc)
 	registerTLSEncryptedKeySteps(ctx, tc)
 	registerSchemaArtifactsStepsIfBuilt(ctx, tc)
+	registerReleaseToolSteps(ctx, tc)
 }

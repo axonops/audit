@@ -32,6 +32,7 @@ package ghclient
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -191,6 +192,32 @@ func (c *Client) GetRef(ctx context.Context, owner, repo, refSuffix string) (*Re
 	return &r, nil
 }
 
+// GetTag dereferences an annotated tag object to its referenced
+// commit. Pass the tag-object SHA (e.g. from a prior [Client.GetRef]
+// whose Object.Type is "tag"); the returned [Tag.Object.SHA] is the
+// commit the tag points at.
+//
+// This is the right-hand side of the idempotency check for
+// annotated tags: re-running create-tag against the same commit SHA
+// must dereference through the tag object, not compare against the
+// tag-object SHA directly (which would be a false-contamination
+// diagnostic on every re-run).
+func (c *Client) GetTag(ctx context.Context, owner, repo, tagObjectSHA string) (*Tag, error) {
+	url := fmt.Sprintf("%s/repos/%s/%s/git/tags/%s", c.baseURL, owner, repo, tagObjectSHA)
+	status, body, reqID, err := c.do(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, &HTTPError{StatusCode: status, Body: string(body), Method: http.MethodGet, URL: url, RequestID: reqID}
+	}
+	var t Tag
+	if uerr := json.Unmarshal(body, &t); uerr != nil {
+		return nil, fmt.Errorf("ghclient: GetTag decode: %w", uerr)
+	}
+	return &t, nil
+}
+
 // CreateTag creates an annotated tag object in owner/repo. The
 // returned [Tag.SHA] is the SHA of the tag OBJECT (not the
 // referenced commit) — pass it to [Client.CreateRef] to make the
@@ -301,6 +328,142 @@ func (c *Client) do(ctx context.Context, method, url string, body []byte) (statu
 	}
 	c.logger.LogAttrs(ctx, level, "github_api_call", attrs...)
 	return resp.StatusCode, respBody, reqID, nil
+}
+
+// Commit is the response shape of the createCommitOnBranch GraphQL
+// mutation.
+type Commit struct {
+	OID string `json:"oid"`
+	URL string `json:"url"`
+}
+
+// CommitFileAddition is one file to add to a commit. Contents are
+// raw bytes; the client base64-encodes them for the GraphQL payload.
+type CommitFileAddition struct {
+	Path     string
+	Contents []byte
+}
+
+// CreateCommitOnBranchInput is the strongly-typed input for the
+// GraphQL createCommitOnBranch mutation.
+type CreateCommitOnBranchInput struct {
+	RepositoryNameWithOwner string
+	BranchName              string
+	ExpectedHeadOID         string
+	Message                 string
+	Additions               []CommitFileAddition
+}
+
+// CreateCommitOnBranch submits the GraphQL createCommitOnBranch
+// mutation. The server signs the resulting commit with the App
+// identity associated with the token.
+//
+// The variables block is constructed via encoding/json and the
+// request body is built as a structured object — regression for
+// #915/#916 where the bash version passed variables as a JSON
+// string and the server rejected the mutation.
+func (c *Client) CreateCommitOnBranch(ctx context.Context, in *CreateCommitOnBranchInput) (*Commit, error) {
+	if in == nil {
+		return nil, errors.New("ghclient: CreateCommitOnBranch: nil input")
+	}
+	if !shaPatternMatch(in.ExpectedHeadOID) {
+		return nil, fmt.Errorf("ghclient: CreateCommitOnBranch: invalid ExpectedHeadOID %q", in.ExpectedHeadOID)
+	}
+
+	// Build typed fileChanges.additions: each entry has path and
+	// base64-encoded contents.
+	type ghFileAddition struct {
+		Path     string `json:"path"`
+		Contents string `json:"contents"`
+	}
+	additions := make([]ghFileAddition, 0, len(in.Additions))
+	for _, a := range in.Additions {
+		additions = append(additions, ghFileAddition{
+			Path:     a.Path,
+			Contents: base64.StdEncoding.EncodeToString(a.Contents),
+		})
+	}
+
+	// The full mutation input is a structured object — never a
+	// string. Encoding via encoding/json guarantees this.
+	mutationInput := map[string]any{
+		"branch": map[string]string{
+			"repositoryNameWithOwner": in.RepositoryNameWithOwner,
+			"branchName":              in.BranchName,
+		},
+		"expectedHeadOid": in.ExpectedHeadOID,
+		"message":         map[string]string{"headline": in.Message},
+		"fileChanges":     map[string]any{"additions": additions},
+	}
+
+	const mutation = `mutation($input: CreateCommitOnBranchInput!) {
+  createCommitOnBranch(input: $input) {
+    commit { oid url }
+  }
+}`
+
+	body := map[string]any{
+		"query":     mutation,
+		"variables": map[string]any{"input": mutationInput},
+	}
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("ghclient: CreateCommitOnBranch marshal: %w", err)
+	}
+
+	url := c.baseURL + "/graphql"
+	status, respBody, reqID, err := c.do(ctx, http.MethodPost, url, bodyBytes)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, &HTTPError{StatusCode: status, Body: string(respBody), Method: http.MethodPost, URL: url, RequestID: reqID}
+	}
+
+	// GraphQL responses always come back as 200 but may carry a
+	// top-level errors array.
+	var resp struct {
+		Data struct {
+			CreateCommitOnBranch struct {
+				Commit Commit `json:"commit"`
+			} `json:"createCommitOnBranch"`
+		} `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if uerr := json.Unmarshal(respBody, &resp); uerr != nil {
+		return nil, fmt.Errorf("ghclient: CreateCommitOnBranch decode: %w", uerr)
+	}
+	if len(resp.Errors) > 0 {
+		return nil, &HTTPError{
+			StatusCode: status,
+			Body:       string(respBody),
+			Method:     http.MethodPost,
+			URL:        url,
+			RequestID:  reqID,
+		}
+	}
+	out := resp.Data.CreateCommitOnBranch.Commit
+	return &out, nil
+}
+
+// shaPatternMatch reports whether s is a 40-hex-char SHA. Lives
+// here (instead of using internal/sha) to avoid an import cycle if
+// internal/sha ever needs to use ghclient.
+func shaPatternMatch(s string) bool {
+	if len(s) != 40 {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9':
+		case r >= 'a' && r <= 'f':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // retryAfterSeconds returns the seconds value of a 403 response's

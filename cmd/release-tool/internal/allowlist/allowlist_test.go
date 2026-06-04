@@ -15,9 +15,6 @@
 package allowlist_test
 
 import (
-	"os"
-	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/axonops/audit/cmd/release-tool/internal/allowlist"
@@ -113,43 +110,9 @@ func TestIsAllowed_RejectBackslash(t *testing.T) {
 	}
 }
 
-func TestIsSymlink_RejectsSymlinkedGoMod(t *testing.T) {
-	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("symlink semantics differ on Windows; skipping")
-	}
-	root := t.TempDir()
-	// Create a real go.mod
-	realPath := filepath.Join(root, "real.go.mod")
-	if err := os.WriteFile(realPath, []byte("module example\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	// Create a symlink named go.mod -> real.go.mod
-	symPath := filepath.Join(root, "go.mod")
-	if err := os.Symlink(realPath, symPath); err != nil {
-		t.Fatal(err)
-	}
-	isSym, err := allowlist.IsSymlink(root, "go.mod")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !isSym {
-		t.Error("symlinked go.mod must be reported as a symlink")
-	}
-}
-
-func TestIsSymlink_AcceptsRegularFile(t *testing.T) {
-	t.Parallel()
-	root := t.TempDir()
-	path := filepath.Join(root, "go.mod")
-	if err := os.WriteFile(path, []byte("module example\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	isSym, err := allowlist.IsSymlink(root, "go.mod")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if isSym {
-		t.Error("regular file must NOT be reported as a symlink")
-	}
-}
+// Symlink rejection moved out of allowlist into
+// cmd_commit_pinned_deps.go readAllowedFile, which uses O_NOFOLLOW
+// on open(2) — atomic, no TOCTOU window. The dedicated test for
+// the production symlink-refused path is
+// TestRun_CommitPinnedDeps_Symlink_Rejected in
+// cmd_commit_pinned_deps_test.go.

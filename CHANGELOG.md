@@ -15,9 +15,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `net/http` + slog with Authorization-header redaction + per-call
   request-ID), NUL-safe `gitstatus` parser, `allowlist` for
   go.mod/go.sum-only enforcement, and strict 40-hex-char `sha`
-  validator. PR-3 adds the `commit-pinned-deps` and `create-tag`
-  subcommands. The binary is in its own `cmd/release-tool/go.mod`
+  validator. The binary is in its own `cmd/release-tool/go.mod`
   module — not published to consumers.
+- **`release-tool` subcommands `commit-pinned-deps` and `create-tag`
+  (#923).** PR-3 lands the two release-flow operations on top of the
+  PR-2 foundation. `commit-pinned-deps` orchestrates `git status -z`
+  + allowlist + symlink guard + the GraphQL `createCommitOnBranch`
+  mutation; `create-tag` does an idempotent two-step REST tag-object
+  + ref creation, with same-SHA re-runs exiting 4 (no-op) and
+  different-SHA re-runs exiting 1 (refusing to overwrite). Both
+  subcommands ship with named regression tests covering #906
+  (off-allowlist paths refused), #907 (NUL-delimited git-status
+  parsed via `io.Reader` so 18+ files don't collapse), #910 (symlink
+  refused), #911 (only 40-hex SHAs accepted), and #915/#916
+  (GraphQL variables sent as a structured object, never a JSON
+  string). Both honour `--dry-run` to emit the proposed API payload
+  without performing the mutation.
 - **Encrypted PKCS#8 v2 client private keys via
   `tls.key_password`.** Every TLS-bearing block (webhook, loki,
   splunk, syslog, vault, openbao) gains an optional

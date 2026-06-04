@@ -82,6 +82,123 @@ func TestClient_GetRef_200_OK(t *testing.T) {
 	}
 }
 
+// TestClient_GetTag_200_OK exercises the annotated-tag dereference
+// path added for B1 in PR-3. GET /git/tags/{tag_object_sha} returns
+// a Tag whose Object.SHA is the commit the tag points at.
+func TestClient_GetTag_200_OK(t *testing.T) {
+	t.Parallel()
+	const (
+		tagObjectSHA = "9999999999999999999999999999999999999999"
+		commitSHA    = "abcdef0123456789abcdef0123456789abcdef01"
+	)
+	c, _, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || !strings.HasSuffix(r.URL.Path, "/git/tags/"+tagObjectSHA) {
+			http.Error(w, "wrong endpoint: "+r.URL.Path, http.StatusBadRequest)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"sha":     tagObjectSHA,
+			"tag":     "v0.2.2",
+			"message": "Release v0.2.2",
+			"object": map[string]any{
+				"sha":  commitSHA,
+				"type": "commit",
+			},
+		})
+	})
+
+	tag, err := c.GetTag(context.Background(), "owner", "repo", tagObjectSHA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tag.Object.SHA != commitSHA {
+		t.Errorf("Object.SHA must be the dereferenced commit %s, got %s", commitSHA, tag.Object.SHA)
+	}
+	if tag.SHA != tagObjectSHA {
+		t.Errorf("Tag.SHA must echo the tag-object SHA %s, got %s", tagObjectSHA, tag.SHA)
+	}
+}
+
+// TestRetryAfterSeconds_403Only locks the contract that
+// retryAfterSeconds returns the parsed Retry-After header value
+// only for HTTP 403 responses (test-analyst N3). Other statuses
+// (429 = rate limit, 503 = unavailable) are explicitly ignored —
+// the GitHub secondary-rate-limit doc says 403 is the only carrier.
+func TestRetryAfterSeconds_403Only(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name       string
+		retryAfter string
+		want       int
+		statusCode int
+	}{
+		{"403 with 30s", "30", 30, 403},
+		{"403 with empty header", "", 0, 403},
+		{"403 with non-numeric", "soon", 0, 403},
+		{"429 with 30s is ignored", "30", 0, 429},
+		{"503 with 30s is ignored", "30", 0, 503},
+		{"200 with 30s is ignored", "30", 0, 200},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			resp := &http.Response{
+				StatusCode: tc.statusCode,
+				Header:     http.Header{},
+			}
+			if tc.retryAfter != "" {
+				resp.Header.Set("Retry-After", tc.retryAfter)
+			}
+			got := ghclient.RetryAfterSecondsForTest(resp)
+			if got != tc.want {
+				t.Errorf("want %d, got %d", tc.want, got)
+			}
+		})
+	}
+}
+
+// TestClient_GetTag_200_MalformedJSON locks the decode-error path
+// (test-analyst I3): a 200 response carrying malformed JSON must
+// surface a decode error, not panic or be silently treated as a
+// successful empty Tag struct.
+func TestClient_GetTag_200_MalformedJSON(t *testing.T) {
+	t.Parallel()
+	c, _, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"sha": malformed json`)
+	})
+
+	_, err := c.GetTag(context.Background(), "owner", "repo", "deadbeef")
+	if err == nil {
+		t.Fatal("expected decode error")
+	}
+	if !strings.Contains(err.Error(), "GetTag decode") {
+		t.Errorf("error must name the decode step: %q", err.Error())
+	}
+}
+
+// TestClient_GetTag_404_NotFound surfaces a HTTPError so callers can
+// distinguish missing-tag-object from a network failure.
+func TestClient_GetTag_404_NotFound(t *testing.T) {
+	t.Parallel()
+	c, _, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, `{"message":"Not Found"}`)
+	})
+
+	_, err := c.GetTag(context.Background(), "owner", "repo", "deadbeef")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var herr *ghclient.HTTPError
+	if !errors.As(err, &herr) {
+		t.Fatalf("expected HTTPError, got %T", err)
+	}
+	if herr.StatusCode != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", herr.StatusCode)
+	}
+}
+
 func TestClient_GetRef_404_NotFound(t *testing.T) {
 	t.Parallel()
 	c, _, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
@@ -332,6 +449,114 @@ func TestClient_NetworkError_PropagatesAsWrappedError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "request_id=") {
 		t.Errorf("network error must include request_id for correlation, got %v", err)
+	}
+}
+
+func TestClient_CreateCommitOnBranch_200_OK(t *testing.T) {
+	t.Parallel()
+	c, _, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/graphql") {
+			http.Error(w, "wrong endpoint", http.StatusBadRequest)
+			return
+		}
+		// Regression for #915/#916: assert the request body's
+		// `variables` field is a structured OBJECT, not a JSON-
+		// encoded string.
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "bad body", http.StatusBadRequest)
+			return
+		}
+		vars, ok := body["variables"].(map[string]any)
+		if !ok {
+			http.Error(w, "variables must be object, not string", http.StatusUnprocessableEntity)
+			return
+		}
+		if _, ok := vars["input"].(map[string]any); !ok {
+			http.Error(w, "variables.input must be object", http.StatusUnprocessableEntity)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"createCommitOnBranch": map[string]any{
+					"commit": map[string]any{
+						"oid": "feedfacefeedfacefeedfacefeedfacefeedface",
+						"url": "https://github.com/o/r/commit/feedface",
+					},
+				},
+			},
+		})
+	})
+
+	commit, err := c.CreateCommitOnBranch(context.Background(), &ghclient.CreateCommitOnBranchInput{
+		RepositoryNameWithOwner: "o/r",
+		BranchName:              "release/v0.2.x",
+		ExpectedHeadOID:         "0123456789abcdef0123456789abcdef01234567",
+		Message:                 "release: pin inter-module deps to v0.2.2",
+		Additions: []ghclient.CommitFileAddition{
+			{Path: "go.mod", Contents: []byte("module example\n")},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if commit.OID != "feedfacefeedfacefeedfacefeedfacefeedface" {
+		t.Errorf("wrong commit OID: %s", commit.OID)
+	}
+}
+
+func TestClient_CreateCommitOnBranch_RejectsBadExpectedHeadOID(t *testing.T) {
+	t.Parallel()
+	c, _, _ := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("server must not be called when ExpectedHeadOID is invalid")
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	_, err := c.CreateCommitOnBranch(context.Background(), &ghclient.CreateCommitOnBranchInput{
+		RepositoryNameWithOwner: "o/r",
+		BranchName:              "release/v0.2.x",
+		ExpectedHeadOID:         "not-a-sha",
+		Message:                 "irrelevant",
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestClient_CreateCommitOnBranch_GraphQLErrors_Surfaced(t *testing.T) {
+	t.Parallel()
+	c, _, _ := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"errors": []map[string]any{
+				{"message": "Variable $input was provided invalid value"},
+			},
+		})
+	})
+	_, err := c.CreateCommitOnBranch(context.Background(), &ghclient.CreateCommitOnBranchInput{
+		RepositoryNameWithOwner: "o/r",
+		BranchName:              "release/v0.2.x",
+		ExpectedHeadOID:         "0123456789abcdef0123456789abcdef01234567",
+		Message:                 "x",
+	})
+	var herr *ghclient.HTTPError
+	if !errors.As(err, &herr) {
+		t.Fatalf("expected HTTPError, got %T", err)
+	}
+	if !strings.Contains(herr.Body, "Variable") {
+		t.Errorf("error body must include the GraphQL error message; got %q", herr.Body)
+	}
+}
+
+func TestClient_CreateCommitOnBranch_NilInput(t *testing.T) {
+	t.Parallel()
+	c, err := ghclient.New("dummy-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.CreateCommitOnBranch(context.Background(), nil)
+	if err == nil {
+		t.Fatal("nil input must be rejected")
 	}
 }
 

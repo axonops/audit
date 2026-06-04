@@ -23,14 +23,16 @@
 // unauthorised changes. The allowlist refuses to forward those.
 //
 // The grammar is deliberately narrow: only top-level, first-level, and
-// second-level go.mod/go.sum files are permitted. Symlinks are
-// rejected outright via [IsSymlink]; expand the allowlist only after
-// considering supply-chain implications.
+// second-level go.mod/go.sum files are permitted. Symlink rejection
+// is performed by the caller atomically at open time via
+// O_NOFOLLOW — there is no [IsSymlink] helper, because an
+// lstat-then-open pair would create a TOCTOU window where a
+// symlink could be swapped in between the two syscalls (#910).
+// Expand the allowlist only after considering supply-chain
+// implications.
 package allowlist
 
 import (
-	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 )
@@ -117,16 +119,4 @@ func matchesAnyPattern(p string) bool {
 		}
 	}
 	return false
-}
-
-// IsSymlink reports whether p (a path relative to root) refers to a
-// symlink on disk. Use this BEFORE committing — even if [IsAllowed]
-// accepts the path, a symlinked go.mod could exfiltrate arbitrary
-// file contents into the release commit.
-func IsSymlink(root, p string) (bool, error) {
-	info, err := os.Lstat(filepath.Join(root, p))
-	if err != nil {
-		return false, fmt.Errorf("allowlist: lstat %q: %w", p, err)
-	}
-	return info.Mode()&os.ModeSymlink != 0, nil
 }

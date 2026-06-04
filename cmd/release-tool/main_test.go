@@ -81,26 +81,31 @@ func TestRun_BadFlag_ExitsTwo(t *testing.T) {
 func TestSplitSubcommand_Variants(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name string
-		sub  string
-		in   []string
-		flag []string
+		name    string
+		sub     string
+		in      []string
+		flag    []string
+		subArgs []string
 	}{
-		{"plain subcommand", "create-tag", []string{"create-tag"}, []string{}},
-		{"flag then subcommand", "create-tag", []string{"--dry-run", "create-tag"}, []string{"--dry-run"}},
-		{"only flags", "", []string{"--help"}, []string{"--help"}},
-		{"double-dash separator", "literal", []string{"--", "literal"}, []string{}},
-		{"empty", "", []string{}, []string{}},
+		{"plain subcommand", "create-tag", []string{"create-tag"}, []string{}, []string{}},
+		{"flag then subcommand", "create-tag", []string{"--dry-run", "create-tag"}, []string{"--dry-run"}, []string{}},
+		{"subcommand with own flags", "create-tag", []string{"create-tag", "--owner", "axonops"}, []string{}, []string{"--owner", "axonops"}},
+		{"only flags", "", []string{"--help"}, []string{"--help"}, []string{}},
+		{"double-dash separator", "literal", []string{"--", "literal"}, []string{}, []string{}},
+		{"empty", "", []string{}, []string{}, []string{}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			flags, sub := splitSubcommand(c.in)
+			flags, sub, subArgs := splitSubcommand(c.in)
 			if sub != c.sub {
 				t.Errorf("sub: want %q, got %q", c.sub, sub)
 			}
 			if len(flags) != len(c.flag) {
 				t.Errorf("flags len: want %d, got %d (%v)", len(c.flag), len(flags), flags)
+			}
+			if len(subArgs) != len(c.subArgs) {
+				t.Errorf("subArgs len: want %d, got %d (%v)", len(c.subArgs), len(subArgs), subArgs)
 			}
 		})
 	}

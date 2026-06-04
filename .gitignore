@@ -161,3 +161,4 @@ examples/*/*.log
 # developer runs `go build` without -o.
 /file-emfile-runner
 /file-enospc-runner
+bin/

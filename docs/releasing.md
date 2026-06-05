@@ -964,7 +964,24 @@ per-module, not repository-wide.
 
 ---
 
-## For Maintainers: Verification Tools
+## For Maintainers: PR-6 Workflow Swap Inventory (v0.2.2)
+
+The v0.2.2 cascade-prevention plan (#918) introduces
+`cmd/release-tool` — a typed Go binary that replaces the two
+state-mutating bash scripts that produced 8 cascading bugs in
+v0.2.1. PR-5 (#927) hardens release.yml; PR-6 swaps these exact
+call sites to invoke `release-tool` and deletes the bash helpers.
+
+| File | Line(s) | Currently | After PR-6 |
+|---|---|---|---|
+| `.github/workflows/release.yml` | ~496-499 | `scripts/release/gh-graphql-commit.sh --branch ... --message ... --auto-create-branch` | `release-tool commit-pinned-deps --owner --repo --branch --message --auto-create-branch` |
+| `scripts/release/tag-all.sh` | ~90-93 | `scripts/release/gh-graphql-tag.sh --tag --sha --message` | `release-tool create-tag --owner --repo --tag --sha --message` |
+| `scripts/release/tag-all.sh` | ~121-124 (emitted recovery snippet in `$GITHUB_STEP_SUMMARY`) | `git tag -a / git push` | `release-tool create-tag --owner --repo --tag --sha --message` |
+
+PR-6 also deletes `scripts/release/gh-graphql-commit.sh` and
+`scripts/release/gh-graphql-tag.sh`. No other call sites of those
+two scripts exist in the workflow surface; see the PR-5 devops
+audit attached to #927.
 
 ### The Release Workflow
 

@@ -149,6 +149,31 @@ EOF
     [ "$n" -eq 3 ]
 }
 
+# --- MAJOR-5 fix (#927): recovery snippet uses gh-graphql-tag.sh ---
+
+@test "test_tag_all_recovery_snippet_uses_gh_graphql_tag_not_git_push" {
+    # The repo has required_signatures ON, so the previous
+    # `git tag -a` + `git push` in the recovery snippet would
+    # immediately fail in production. The fix emits the App-signed
+    # gh-graphql-tag.sh helper instead (PR-6 swaps this for
+    # `release-tool create-tag`).
+    sha="abc123abc123abc123abc123abc123abc123abc1"
+    export FAKE_GIT_KNOWN_COMMITS="$sha"
+    export FAKE_TAG_FAILS="syslog/v0.2.2"
+    GITHUB_STEP_SUMMARY="${BATS_TEST_TMPDIR}/step.md"
+    export GITHUB_STEP_SUMMARY
+    : > "$GITHUB_STEP_SUMMARY"
+
+    run "$SCRIPT" "v0.2.2" "$sha"
+    [ "$status" -eq 1 ]
+
+    # The recovery snippet must reference gh-graphql-tag.sh, NOT
+    # raw `git tag -a` / `git push origin <tag>`.
+    grep -qF "gh-graphql-tag.sh" "$GITHUB_STEP_SUMMARY"
+    ! grep -qE '^git tag -a' "$GITHUB_STEP_SUMMARY"
+    ! grep -qE '^git push origin "syslog/v0.2.2"' "$GITHUB_STEP_SUMMARY"
+}
+
 @test "test_tag_all_push_auth_failure_surfaces_error_and_does_not_continue" {
     sha="abc123abc123abc123abc123abc123abc123abc1"
     export FAKE_GIT_KNOWN_COMMITS="$sha"

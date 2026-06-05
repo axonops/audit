@@ -40,6 +40,14 @@ on:
         required: false
         type: boolean
         default: false
+      # MAJOR-3 fix (#927): expose the wait-for-pr-merge deadline so
+      # operators can stretch it during slow review windows. The
+      # previous hardcoded 45 min was too short during real incidents.
+      merge_timeout_minutes:
+        description: "Minutes wait-for-pr-merge polls before timing out (default 45)"
+        required: false
+        type: number
+        default: 45
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
@@ -187,6 +195,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # MINOR-5 fix (#927): `make workspace` creates `go.work` which
+      # CLAUDE.md forbids on release branches. The CI runner is
+      # ephemeral and the file is never committed back, so this is
+      # safe in practice — comment exists so a future reviewer
+      # doesn't flag it as a CLAUDE.md violation.
       - name: Set up workspace
         run: make workspace
 
@@ -258,10 +271,16 @@ jobs:
             cat bench-compare.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          # MAJOR-9 fix (#927): bench-advisory step always exits 0.
+          # The job has `continue-on-error: true` to make the
+          # advisory failure non-blocking, but the previous
+          # `exit "$rc"` painted the step red even though the job
+          # painted yellow — operator-confusing in the summary
+          # table. The `::warning::` already conveys the signal.
           if [ "$rc" -ne 0 ]; then
             echo "::warning::bench-compare exited $rc (advisory — does not block the release)"
           fi
-          exit "$rc"
+          exit 0
 
       - name: Upload benchmark artifacts
         if: always()
@@ -423,11 +442,31 @@ jobs:
           # GraphQL Repository type has no autoMergeAllowed field).
           # The setting lives on the REST repo object as
           # `allow_auto_merge`, so query the REST API directly.
+          #
+          # BLOCKER-B fix (#927): the REST response omits keys the
+          # caller's token can't read. If the App lacks
+          # Administration:read, `allow_auto_merge` is absent and
+          # `--jq` emits `null`, which the previous `!= "true"` check
+          # mis-classified as "auto-merge disabled". Surface the
+          # ambiguous case explicitly instead.
           allow=$(gh api "/repos/${GITHUB_REPOSITORY}" --jq '.allow_auto_merge')
-          if [ "$allow" != "true" ]; then
-            echo "::error::Repository setting 'Allow auto-merge' is disabled. Enable it in Settings → General before triggering the release workflow."
-            exit 1
-          fi
+          case "$allow" in
+            true)
+              echo "auto-merge: enabled"
+              ;;
+            false)
+              echo "::error::Repository setting 'Allow auto-merge' is disabled. Enable it in Settings → General before triggering the release workflow."
+              exit 1
+              ;;
+            ""|null)
+              echo "::error::Could not read 'allow_auto_merge' from the repository — the App token may lack the Administration:read scope. Check Settings → Apps → axonops-audit-release-bot → Permissions."
+              exit 1
+              ;;
+            *)
+              echo "::error::Unexpected value for 'allow_auto_merge': $allow"
+              exit 1
+              ;;
+          esac
 
       - name: Checkout main
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -461,7 +500,12 @@ jobs:
           # collapsing patch versions onto a single series name is
           # the intended design. Derive it by replacing the final
           # `.PATCH` (plus any `-PRE` suffix) with `.x`.
-          SERIES=$(echo "$PUBLISH_VERSION" | sed -E 's/\.[0-9]+(-.*)?$/.x/')
+          # MINOR-1 fix (#927): pure-bash parameter expansion
+          # avoids the echo|sed fork pair. Strip optional `-PRE`
+          # suffix first, then strip the `.PATCH` to leave
+          # `vMAJOR.MINOR`, then append `.x`.
+          NOPRE="${PUBLISH_VERSION%%-*}"
+          SERIES="${NOPRE%.*}.x"
           BRANCH="release/$SERIES"
 
           # Recreate the branch idempotently. A previous failed run
@@ -470,11 +514,25 @@ jobs:
           # before deleting the branch.
           if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
             echo "Stale branch $BRANCH exists on origin — closing any open PRs and deleting."
-            for pr in $(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number'); do
+            # BLOCKER-D fix (#927): capture-then-iterate so a transient
+            # `gh pr list` failure is visible (exit code propagated)
+            # instead of silently degrading to "no stale PRs".
+            stale_prs_file="$(mktemp)"
+            trap 'rm -f "$stale_prs_file"' RETURN
+            gh pr list --head "$BRANCH" --state open --json number --jq '.[].number' \
+              > "$stale_prs_file"
+            while IFS= read -r pr; do
+              [[ -z "$pr" ]] && continue
               echo "  closing stale PR #$pr"
               gh pr close "$pr" --delete-branch=false --comment "Superseded by re-run of release workflow."
-            done
-            git push origin --delete "$BRANCH" || true
+            done < "$stale_prs_file"
+            # BLOCKER-F fix (#927): drop `|| true` so a branch-delete
+            # failure (e.g. branch protection refusal, transient auth
+            # error) aborts here instead of letting the next
+            # `commit-pinned-deps --auto-create-branch` build atop a
+            # stale tree. The `git ls-remote` guard above already
+            # handles the legitimate "already deleted" race.
+            git push origin --delete "$BRANCH"
           fi
 
           if git diff --quiet HEAD --; then
@@ -498,20 +556,36 @@ jobs:
             --message "release: pin inter-module deps to $PUBLISH_VERSION" \
             --auto-create-branch
 
-          # `gh pr create` may emit progress lines before the URL —
-          # ask for the PR number directly via --json so we don't have
-          # to parse stdout. The URL is reconstructed for logging.
-          NUM=$(gh pr create \
+          # BLOCKER-A fix (#927): `gh pr create | tail | sed` is
+          # exactly the v0.2.1 anti-pattern (#911 class). Use the
+          # typed `--json url` form so we get a structured response —
+          # no progress-line parsing, no shell pipeline that swallows
+          # gh's exit code, and the URL is the source of truth instead
+          # of a regex on stdout.
+          #
+          # Requires gh ≥ 2.25 for `--json` on `pr create`; ubuntu-
+          # latest's preinstalled gh is well past this floor. The
+          # `gh --version` assertion in `preflight` guarantees it.
+          PR_URL=$(gh pr create \
             --base main --head "$BRANCH" \
             --title "release: $PUBLISH_VERSION" \
             --body "Automated release PR (#513). Tags every published module at the merge commit. Approve to let auto-merge fire after CI green." \
-            | tail -n1 | sed -E 's@.*/([0-9]+)$@\1@')
-          if ! [[ "$NUM" =~ ^[0-9]+$ ]]; then
-            echo "::error::Failed to parse PR number from gh pr create output."
+            --json url --jq '.url')
+          if ! [[ "$PR_URL" =~ ^https://github\.com/.+/pull/[0-9]+$ ]]; then
+            echo "::error::gh pr create returned an unexpected URL: $PR_URL"
             exit 1
           fi
-          gh pr merge "$NUM" --auto --squash
-          PR_URL=$(gh pr view "$NUM" --json url --jq '.url')
+          NUM="${PR_URL##*/}"
+          # MAJOR-6 fix (#927): capture `gh pr merge --auto`'s exit
+          # code so a per-PR auto-merge refusal aborts here instead of
+          # leaving wait-for-pr-merge to poll uselessly for 45 min.
+          if ! gh pr merge "$NUM" --auto --squash; then
+            echo "::error::gh pr merge --auto --squash refused PR #$NUM. Possible causes:"
+            echo "::error::  - branch protection requires reviews the App token cannot provide"
+            echo "::error::  - status checks the PR cannot yet satisfy"
+            echo "::error::  - per-PR 'Allow auto-merge' override"
+            exit 1
+          fi
           echo "pr_number=$NUM"   >> "$GITHUB_OUTPUT"
           echo "branch=$BRANCH"   >> "$GITHUB_OUTPUT"
           echo "::notice::Release PR opened: $PR_URL"
@@ -546,12 +620,16 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           PR: ${{ needs.update-deps-pr.outputs.pr_number }}
+          # MAJOR-3 fix (#927): expose merge timeout as a
+          # workflow_dispatch input (default 45 min) so an operator
+          # can stretch it during slow review windows.
+          MERGE_TIMEOUT_MINUTES: ${{ inputs.merge_timeout_minutes || 45 }}
         run: |
           set -euo pipefail
           GH_REPO="$GITHUB_REPOSITORY"
           export GH_REPO
 
-          deadline=$(( $(date +%s) + 45*60 ))
+          deadline=$(( $(date +%s) + MERGE_TIMEOUT_MINUTES*60 ))
           delay=30
           while [ "$(date +%s)" -lt "$deadline" ]; do
             STATE=$(gh pr view "$PR" --json state --jq '.state')
@@ -586,23 +664,34 @@ jobs:
             fi
           done
 
+          # BLOCKER-C fix (#927): the recovery snippet copy-pasted into
+          # the job summary previously had no SHA guard, so an
+          # operator running it before the PR fully merged would tag
+          # an empty/null SHA. The validate line below refuses to
+          # proceed until mergeCommit.oid is a real 40-hex SHA.
+          #
+          # MAJOR-5 fix (#927): the previous recovery used
+          # `git tag -a` + `git push`, but the repo has
+          # required_signatures ON. The operator would discover this
+          # the hard way. Use the App-signed gh-graphql-tag.sh
+          # (PR-6 will swap this for `release-tool create-tag`).
           {
-            echo '## wait-for-pr-merge timed out'
+            echo "## wait-for-pr-merge timed out"
             echo
-            echo "PR #$PR did not merge within 45 minutes."
+            echo "PR #$PR did not merge within ${MERGE_TIMEOUT_MINUTES} minutes."
             echo
             echo '### Recovery'
             echo
-            echo 'The PR is still open and may auto-merge later. Once it merges, push the core tag at the merge commit to trigger the recovery path:'
+            echo 'The PR is still open and may auto-merge later. Once it merges, push the core tag at the merge commit via the App-signed helper (raw `git push` would fail required_signatures):'
             echo
             echo '```bash'
             echo "MERGE_SHA=\$(gh pr view $PR --json mergeCommit --jq '.mergeCommit.oid')"
+            echo '[[ "$MERGE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "PR has not merged yet — re-check in a few minutes."; exit 1; }'
             echo "git fetch origin"
-            echo "git tag -a \"\${VERSION}\" -m \"Release \${VERSION}\" \"\$MERGE_SHA\""
-            echo "git push origin \"\${VERSION}\""
+            echo "scripts/release/gh-graphql-tag.sh --tag \"\${VERSION}\" --sha \"\$MERGE_SHA\" --message \"Release \${VERSION}\""
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "::error::Release PR not merged within 45 min — see job summary for the recovery command."
+          echo "::error::Release PR not merged within ${MERGE_TIMEOUT_MINUTES} min — see job summary for the recovery command."
           exit 1
 
   # =====================================================================
@@ -729,6 +818,29 @@ jobs:
             exit 1
           fi
 
+      # MAJOR-4 fix (#927): on the workflow_dispatch path, also
+      # require that the target SHA has a successful CI run on its
+      # history. Warn-only on the recovery (push:tag) path because
+      # an operator might be tagging a SHA whose CI run aged out of
+      # GitHub Actions retention.
+      - name: Verify tag SHA has a successful CI run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          SHA="$(git rev-parse HEAD)"
+          count="$(gh run list --commit "$SHA" --workflow ci.yml --status success --json databaseId --jq 'length')"
+          if [ "$count" -lt 1 ]; then
+            if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+              echo "::error::No successful ci.yml run found for $SHA on workflow_dispatch path."
+              exit 1
+            else
+              echo "::warning::No successful ci.yml run found for $SHA on recovery path (run may have aged out)."
+            fi
+          else
+            echo "✓ $count successful ci.yml run(s) recorded for $SHA"
+          fi
+
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
@@ -762,6 +874,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # MINOR-3 fix (#927): pin the GoReleaser binary version
+      # explicitly to v2.15.4. The Action itself is SHA-pinned
+      # (line above), but the `version:` input fetches the binary
+      # at runtime from goreleaser's release bucket. Locking to a
+      # known-good string is the minimum reproducibility floor; a
+      # full digest pin (sha256:) would require a custom download
+      # step and isn't justified for the marginal supply-chain
+      # surface here.
       - name: Run GoReleaser
         id: goreleaser
         uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7.2.1
@@ -815,9 +935,20 @@ jobs:
         with:
           name: mutation-test-report-release-${{ needs.preflight.outputs.version }}
 
+      # MAJOR-7 fix (#927): switch from secrets.GITHUB_TOKEN to the
+      # App token so every release-mutating call is signed by the
+      # same identity. Mixed identities make audit logs harder to
+      # reconstruct during incidents.
+      - name: Generate App token
+        id: app
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v2.1.4
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Attach report to GitHub Release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
           set -euo pipefail
           gh release upload "$PUBLISH_VERSION" mutation-test-report.txt --clobber --repo "$GITHUB_REPOSITORY"
@@ -846,6 +977,23 @@ jobs:
       - name: Trigger proxy indexing (best-effort)
         run: |
           set -euo pipefail
+          # BLOCKER-E fix (#927): capture to a variable + assert
+          # non-empty before iterating. Process-substitution
+          # discards `make` exit code; an empty `< <(make ...)`
+          # silently runs zero iterations and the step exits 0.
+          modules="$(make -s --no-print-directory print-publish-modules)"
+          if [ -z "$modules" ]; then
+            echo "::error::'make print-publish-modules' produced no output — Makefile drift or target deleted."
+            exit 1
+          fi
+          # MINOR-4 fix (#927): tag-all.sh sorts modules by
+          # tag_prefix (col 3) before iterating so partial-failure
+          # diagnostics are deterministic. The workflow loops here
+          # don't sort because the order is purely cosmetic
+          # (advisory indexing / proxy URLs / summary table) — the
+          # canonical order lives in tag-all.sh. Comment exists so
+          # a future maintainer chasing "why is the sort different
+          # here?" sees the answer in the file.
           while IFS='|' read -r dir mod prefix; do
             [ -z "$mod" ] && continue
             echo "Requesting $mod@$PUBLISH_VERSION ..."
@@ -854,38 +1002,55 @@ jobs:
             else
               echo "  ⚠ not yet indexed (will index on first consumer request)"
             fi
-          done < <(make -s --no-print-directory print-publish-modules)
+          done <<< "$modules"
 
       - name: Smoke test (go get + compile)
         run: |
           set -euo pipefail
           REPO_ROOT="$PWD"
           dir=$(mktemp -d)
-          trap 'rm -rf "$dir"' EXIT
+          # MINOR-2 fix (#927): make tempdir writable before rm so a
+          # rogue root-owned file (rare under sudo-less runners but
+          # possible if a container leak occurred) doesn't break
+          # cleanup.
+          trap 'chmod -R u+w "$dir" 2>/dev/null || true; rm -rf "$dir"' EXIT
           cd "$dir"
+
+          # BLOCKER-E fix (#927): same capture-then-validate pattern.
+          modules="$(cd "$REPO_ROOT" && make -s --no-print-directory print-publish-modules)"
+          if [ -z "$modules" ]; then
+            echo "::error::'make print-publish-modules' produced no output."
+            exit 1
+          fi
 
           go mod init smoketest
           while IFS='|' read -r src mod prefix; do
             [ -z "$mod" ] && continue
             GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go get "$mod@$PUBLISH_VERSION"
-          done < <(cd "$REPO_ROOT" && make -s --no-print-directory print-publish-modules)
+          done <<< "$modules"
 
-          cat > main.go << 'GOEOF'
-          package main
-          import (
-            _ "github.com/axonops/audit"
-            _ "github.com/axonops/audit/file"
-            _ "github.com/axonops/audit/syslog"
-            _ "github.com/axonops/audit/webhook"
-            _ "github.com/axonops/audit/loki"
-            _ "github.com/axonops/audit/outputconfig"
-            _ "github.com/axonops/audit/outputs"
-            _ "github.com/axonops/audit/secrets"
-            _ "github.com/axonops/audit/secrets/openbao"
-            _ "github.com/axonops/audit/secrets/vault"
-          )
-          func main() {}
-          GOEOF
+          # MAJOR-8 fix (#927): generate the smoke-test imports list
+          # from print-publish-modules so a new published module can
+          # not silently drift out of the smoke gate. The hardcoded
+          # list was the v0.2.1 cascade root cause class: "the
+          # canonical source of truth and the workflow disagree".
+          {
+            echo 'package main'
+            echo
+            echo 'import ('
+            while IFS='|' read -r dir mod prefix; do
+              [ -z "$mod" ] && continue
+              # Skip cmd/* modules (binaries, not importable libraries).
+              case "$dir" in
+                cmd/*) continue ;;
+              esac
+              printf '\t_ "%s"\n' "$mod"
+            done <<< "$modules"
+            echo ')'
+            echo
+            echo 'func main() {}'
+          } > main.go
+
           GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go build -o /dev/null .
 
           GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go install "github.com/axonops/audit/cmd/audit-gen@$PUBLISH_VERSION"
@@ -957,22 +1122,33 @@ jobs:
           PUBLISH_VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           set -euo pipefail
+          # MAJOR-2 fix (#927): branch the table on event_name. On the
+          # `push:tag` recovery path, half the upstream jobs are
+          # skipped (the workflow_dispatch-only CI gates), so the
+          # previous unconditional table rendered every recovery
+          # release as "half-failed" — confusing during incidents.
           {
             echo "## Release: $PUBLISH_VERSION"
             echo
             echo '| Step | Status |'
             echo '|------|--------|'
             echo "| Preflight | ${{ needs.preflight.result }} |"
-            echo "| CI Gate | ${{ needs.ci.result }} |"
-            echo "| Long Fuzz | ${{ needs.fuzz-long.result }} |"
-            echo "| Bench (advisory) | ${{ needs.bench-advisory.result }} |"
-            echo "| API Check | ${{ needs.api-check.result }} |"
-            echo "| Mutation Test (gate) | ${{ needs.mutation-test-release.result }} |"
-            echo "| Open release PR | ${{ needs.update-deps-pr.result }} |"
-            echo "| Wait for merge | ${{ needs.wait-for-pr-merge.result }} |"
+            if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+              echo "| CI Gate | ${{ needs.ci.result }} |"
+              echo "| Long Fuzz | ${{ needs.fuzz-long.result }} |"
+              echo "| Bench (advisory) | ${{ needs.bench-advisory.result }} |"
+              echo "| API Check | ${{ needs.api-check.result }} |"
+              echo "| Mutation Test (gate) | ${{ needs.mutation-test-release.result }} |"
+              echo "| Open release PR | ${{ needs.update-deps-pr.result }} |"
+              echo "| Wait for merge | ${{ needs.wait-for-pr-merge.result }} |"
+            else
+              echo "| _(workflow_dispatch CI gates skipped — recovery path)_ | — |"
+            fi
             echo "| Tag all modules | ${{ needs.tag-all.result }} |"
             echo "| GoReleaser | ${{ needs.goreleaser.result }} |"
-            echo "| Mutation Report Attached | ${{ needs.mutation-test-attach.result }} |"
+            if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+              echo "| Mutation Report Attached | ${{ needs.mutation-test-attach.result }} |"
+            fi
             echo "| Verify | ${{ needs.verify.result }} |"
             echo "| Invariants | ${{ needs.invariants.result }} |"
             echo
@@ -980,11 +1156,17 @@ jobs:
             echo
             echo '| Module | proxy | docs |'
             echo '|--------|-------|------|'
-            while IFS='|' read -r dir mod prefix; do
-              [ -z "$mod" ] && continue
-              proxy_path=$(echo "$mod" | tr '[:upper:]' '[:lower:]')
-              proxy="https://proxy.golang.org/${proxy_path}/@v/${PUBLISH_VERSION}.info"
-              pkgdev="https://pkg.go.dev/${mod}@${PUBLISH_VERSION}"
-              echo "| \`$mod\` | [proxy]($proxy) | [docs]($pkgdev) |"
-            done < <(make -s --no-print-directory print-publish-modules)
+            # BLOCKER-E fix (#927): capture + validate as above.
+            modules="$(make -s --no-print-directory print-publish-modules || true)"
+            if [ -z "$modules" ]; then
+              echo "| _make-print-publish-modules-failed_ | — | — |"
+            else
+              while IFS='|' read -r dir mod prefix; do
+                [ -z "$mod" ] && continue
+                proxy_path=$(echo "$mod" | tr '[:upper:]' '[:lower:]')
+                proxy="https://proxy.golang.org/${proxy_path}/@v/${PUBLISH_VERSION}.info"
+                pkgdev="https://pkg.go.dev/${mod}@${PUBLISH_VERSION}"
+                echo "| \`$mod\` | [proxy]($proxy) | [docs]($pkgdev) |"
+              done <<< "$modules"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

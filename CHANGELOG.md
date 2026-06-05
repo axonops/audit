@@ -8,6 +8,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`release.yml` hardening from the devops audit that should have
+  run before v0.2.1 (#927).** PR-5 of the v0.2.2 cascade-prevention
+  plan closes 6 BLOCKERs + 9 MAJORs + 5 MINORs in
+  `.github/workflows/release.yml` and `scripts/release/tag-all.sh`.
+  BLOCKERs include: `gh pr create | tail | sed` parsing replaced
+  with `--json url --jq '.url'` (#911 anti-pattern class); the
+  REST `allow_auto_merge` null case classified explicitly instead
+  of mis-rendered as `false`; the wait-for-pr-merge recovery
+  snippet now validates `MERGE_SHA =~ ^[0-9a-f]{40}$` before the
+  emitted recovery command runs; `gh pr list` captured-then-iterated
+  so a transient gh failure surfaces; `make print-publish-modules`
+  output captured-then-validated at all three sites (silent-empty
+  was the v0.2.0 release run 26802604151 root cause); the
+  `git push --delete || true` swallow dropped. MAJORs include:
+  configurable `merge_timeout_minutes` workflow_dispatch input;
+  goreleaser now asserts a successful CI run exists for the tag
+  SHA; `tag-all.sh` partial-failure recovery snippet calls
+  gh-graphql-tag.sh (signed) instead of raw `git tag/push` (which
+  would fail `required_signatures`); the smoke-test imports list
+  is generated from `print-publish-modules` instead of a hardcoded
+  drift-prone block; mutation-test-attach signs with the App token
+  for consistent release-mutation identity. 15 named grep
+  regression tests in `tests/release-scripts/release-yml-grep.bats`
+  lock each fix against future drift, and 1 named bats test in
+  `tag-all.bats` locks the recovery-snippet contract. PR-5 is the
+  precondition for PR-6 (workflow integration with `release-tool`);
+  the complete PR-6 swap inventory is documented at
+  `docs/releasing.md` "PR-6 Workflow Swap Inventory".
 - **bats-core test harness for the surviving release shell scripts
   (#925).** PR-4 of the v0.2.2 cascade-prevention plan: a
   subprocess-driven test suite for `check-tag-conflicts.sh`,

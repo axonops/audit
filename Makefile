@@ -6,7 +6,7 @@
        test-examples \
        lint lint-all lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-audit-validate lint-bdd-report lint-junit-report lint-examples \
        lint-secrets lint-secrets-openbao lint-secrets-vault lint-release-tool \
-       test-release-tool \
+       test-release-tool test-release-scripts \
        check-report-parity \
        vet vet-all fmt fmt-check \
        build build-all bench bench-save bench-compare bench-baseline-check coverage \
@@ -180,6 +180,20 @@ test-secrets-file:
 
 test-release-tool:
 	cd cmd/release-tool && $(call go_test_with_junit,-race -count=1 -coverprofile=coverage.out,./...)
+
+# test-release-scripts runs the bats-core harness that covers the
+# five surviving shell scripts in scripts/release/ (#925). Bats
+# must be on PATH — the CI workflow installs bats-core via the
+# pinned bats-core/bats-action; local developers can run
+# `npm install -g bats` or clone bats-core and `./install.sh`.
+test-release-scripts:
+	@if ! command -v bats >/dev/null 2>&1; then \
+		echo "test-release-scripts: bats not found on PATH. Install with one of:"; \
+		echo "  npm install -g bats"; \
+		echo "  git clone https://github.com/bats-core/bats-core && cd bats-core && ./install.sh ~/.local"; \
+		exit 1; \
+	fi
+	bats tests/release-scripts/
 
 test-all: test-core test-file test-syslog test-webhook test-loki test-splunk test-outputconfig test-audit-gen test-audit-validate test-bdd-report test-junit-report test-secrets test-secrets-env test-secrets-file test-secrets-openbao test-secrets-vault test-release-tool
 test: test-all
@@ -1271,7 +1285,7 @@ install-govulncheck:
 
 # --- Full local quality gate ---
 
-check: vet-all lint-all test-all build-all test-examples verify check-static check-report-parity release-check security
+check: vet-all lint-all test-all test-release-scripts build-all test-examples verify check-static check-report-parity release-check security
 	@echo ""
 	@echo "All checks passed."
 

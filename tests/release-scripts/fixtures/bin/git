@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# Fixture git binary used by tag-all tests.
+#
+# Records every invocation's argv to $ASSERTION_DIR/git.args (one
+# line per call).
+#
+# Subcommand behaviour:
+#   fetch           — no-op (exit 0)
+#   rev-parse       — exit 0 with "<sha>" on stdout for tags listed
+#                      in $FAKE_GIT_EXISTING_TAGS (whitespace-
+#                      separated "tag=sha" pairs); else exit 1
+#   rev-list -n1    — same as rev-parse but only the SHA, not the
+#                      ref name
+#   cat-file -e     — exit 0 if the next arg matches
+#                      $FAKE_GIT_KNOWN_COMMITS; else 1
+#   tag -a          — record only; success
+#   push            — exit 0 unless $FAKE_GIT_PUSH_FAILS_AT contains
+#                      the tag being pushed
+#   *               — exit 0
+#
+# Tests set the FAKE_GIT_* env vars to drive specific scenarios.
+set -euo pipefail
+if [[ -n "${ASSERTION_DIR:-}" ]]; then
+    mkdir -p "$ASSERTION_DIR"
+    printf '%s\n' "$*" >> "$ASSERTION_DIR/git.args"
+fi
+
+# Skip the -C dir prefix (used by check-tag-conflicts via the
+# script's own subshell cd; we don't care about it for stubs).
+args=("$@")
+i=0
+if [[ "${args[0]:-}" == "-C" ]]; then
+    i=2
+fi
+cmd="${args[$i]:-}"
+shift_count=$((i+1))
+subargs=("${args[@]:$shift_count}")
+
+case "$cmd" in
+    fetch)
+        exit 0
+        ;;
+    rev-parse)
+        # rev-parse --verify --quiet refs/tags/<tag>
+        for a in "${subargs[@]}"; do
+            case "$a" in
+                refs/tags/*)
+                    tag="${a#refs/tags/}"
+                    for pair in ${FAKE_GIT_EXISTING_TAGS:-}; do
+                        if [[ "$pair" == "${tag}="* ]]; then
+                            exit 0
+                        fi
+                    done
+                    exit 1
+                    ;;
+            esac
+        done
+        exit 0
+        ;;
+    rev-list)
+        # rev-list -n1 <tag>
+        for a in "${subargs[@]}"; do
+            case "$a" in
+                -n1|--max-count=1) continue ;;
+                *)
+                    tag="$a"
+                    for pair in ${FAKE_GIT_EXISTING_TAGS:-}; do
+                        if [[ "$pair" == "${tag}="* ]]; then
+                            echo "${pair#*=}"
+                            exit 0
+                        fi
+                    done
+                    exit 1
+                    ;;
+            esac
+        done
+        exit 1
+        ;;
+    cat-file)
+        # cat-file -e <sha>^{commit}
+        for a in "${subargs[@]}"; do
+            case "$a" in
+                -e) continue ;;
+                *)
+                    sha="${a%^\{commit\}}"
+                    for known in ${FAKE_GIT_KNOWN_COMMITS:-}; do
+                        if [[ "$known" == "$sha" ]]; then
+                            exit 0
+                        fi
+                    done
+                    exit 1
+                    ;;
+            esac
+        done
+        exit 1
+        ;;
+    tag)
+        exit 0
+        ;;
+    push)
+        # push origin <tag>
+        for a in "${subargs[@]}"; do
+            for tag in ${FAKE_GIT_PUSH_FAILS_AT:-}; do
+                if [[ "$a" == "$tag" || "$a" == "refs/tags/$tag" ]]; then
+                    if [[ -n "${FAKE_GIT_PUSH_AUTH_FAIL:-}" ]]; then
+                        echo "fake git push: auth failed" >&2
+                        exit 128
+                    fi
+                    echo "fake git push: network failure" >&2
+                    exit 1
+                fi
+            done
+        done
+        exit 0
+        ;;
+    *)
+        exit 0
+        ;;
+esac

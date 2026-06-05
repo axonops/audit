@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Fixture make binary used by check-tag-conflicts / tag-all tests.
+# Records every invocation's argv to $ASSERTION_DIR/make.args (one
+# line per call).
+#
+# Always shells out to the real make so the upstream script gets
+# the expected output (test fixtures use a temp Makefile via
+# write_fake_make_makefile + an explicit `cd`); this stub exists
+# only for the assertion file. Tests that need a totally fake make
+# may set $FAKE_MAKE_OUTPUT to override stdout.
+set -euo pipefail
+if [[ -n "${ASSERTION_DIR:-}" ]]; then
+    mkdir -p "$ASSERTION_DIR"
+    printf '%s\n' "$*" >> "$ASSERTION_DIR/make.args"
+fi
+if [[ -n "${FAKE_MAKE_FORCE_EMPTY:-}" ]]; then
+    exit 0
+fi
+if [[ -n "${FAKE_MAKE_OUTPUT:-}" ]]; then
+    printf '%s' "$FAKE_MAKE_OUTPUT"
+    exit 0
+fi
+# Hand off to the real make (the test's PATH has the fixtures dir
+# first; the real make is the next match).
+fixtures_dir="$(dirname "${BASH_SOURCE[0]}")"
+real_make="$(PATH="${PATH#${fixtures_dir}:}" command -v make 2>/dev/null || true)"
+if [[ -z "$real_make" ]]; then
+    # No real make available — emit the fake-publish-modules output
+    # as a sensible default so the script under test can proceed.
+    cat <<'EOF'
+.|github.com/axonops/audit|
+file|github.com/axonops/audit/file|file/
+syslog|github.com/axonops/audit/syslog|syslog/
+EOF
+    exit 0
+fi
+exec "$real_make" "$@"

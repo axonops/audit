@@ -707,6 +707,42 @@ jobs:
         # interpolation is safe.
         run: make ${{ matrix.infra-down }}
 
+  release-scripts:
+    name: Test - Release Scripts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    needs: [hygiene, changes]
+    if: needs.changes.outputs.code == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Install bats-core directly via its install script, pinned
+      # to a specific commit so a compromised upstream cannot inject
+      # CI-time code. The install script unpacks to ~/.local/{bin,
+      # libexec,share} and bats becomes available on PATH after
+      # the next step.
+      - name: Install bats-core (SHA-pinned)
+        shell: bash
+        env:
+          # Pinned to bats-core v1.13.0 — commit
+          # d6a46f2cc2d3025ee3ffb59991c6d93ef903e339. When bumping,
+          # verify with:
+          #   git -C /tmp clone --depth=1 -b vX.Y.Z \
+          #     https://github.com/bats-core/bats-core && \
+          #   git -C /tmp/bats-core rev-parse vX.Y.Z
+          BATS_REF: d6a46f2cc2d3025ee3ffb59991c6d93ef903e339
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/bats-core/bats-core /tmp/bats-core
+          (cd /tmp/bats-core && git checkout --quiet "$BATS_REF" && ./install.sh "$HOME/.local")
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run release-script bats harness
+        run: make test-release-scripts
+
   bdd-verify:
     name: Test - BDD Coverage Verification
     runs-on: ubuntu-latest
@@ -1063,7 +1099,7 @@ jobs:
     permissions:
       contents: read
     timeout-minutes: 5
-    needs: [changes, hygiene, lint, test, test-cross-platform, integration, bdd, bdd-verify, security, security-verify, cross-build, examples-build, validate-release, mutation-test, splunk-ta-appinspect]
+    needs: [changes, hygiene, lint, test, test-cross-platform, integration, bdd, bdd-verify, release-scripts, security, security-verify, cross-build, examples-build, validate-release, mutation-test, splunk-ta-appinspect]
     if: always()
     steps:
       - name: Check all jobs passed

@@ -13,12 +13,14 @@
 // limitations under the License.
 
 // Command release-tool is the audit project's typed replacement for
-// scripts/release/gh-graphql-commit.sh and gh-graphql-tag.sh.
+// the v0.2.1 bash + jq + gh-CLI release helpers that produced the
+// #900-#916 cascade.
 //
-// PR-2 (this revision) lays the foundation: the subcommand dispatch,
-// persistent flags, and the four internal helper packages. PR-3 will
-// add the `commit-pinned-deps` and `create-tag` subcommands that
-// orchestrate the helpers into the actual release flow.
+// The binary is structured around four internal helper packages
+// (ghclient, gitstatus, allowlist, sha) and two subcommands that
+// orchestrate them: `commit-pinned-deps` (releases.yml's release-PR
+// flow) and `create-tag` (the per-module tagging flow driven by
+// scripts/release/tag-all.sh).
 //
 // # I/O contract
 //
@@ -188,11 +190,11 @@ SUBCOMMANDS
     commit-pinned-deps    Open an App-signed commit pinning every go.mod
                           to a release version, using the GitHub GraphQL
                           createCommitOnBranch mutation. Replaces the
-                          v0.2.1 scripts/release/gh-graphql-commit.sh.
+                          v0.2.1 bash commit helper.
     create-tag            Create an annotated tag at a commit SHA.
                           Idempotent: tag-at-same-SHA exits 4 (no-op);
                           tag-at-different-SHA exits 1 (contamination).
-                          Replaces scripts/release/gh-graphql-tag.sh.
+                          Replaces the v0.2.1 bash tag helper.
 
 EXIT CODES
     0 — success

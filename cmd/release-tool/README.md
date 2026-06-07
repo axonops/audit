@@ -3,9 +3,10 @@
 [![Go Reference][godoc-badge]][godoc]
 
 `release-tool` is the audit project's internal CLI that drives the
-release workflow. It replaces the two failing bash scripts
-(`scripts/release/gh-graphql-commit.sh` and `gh-graphql-tag.sh`)
-that produced 7 cascading bugs during v0.2.1 (#900–#916).
+release workflow. It replaces the two failing bash + jq + gh-CLI
+helpers that produced 7 cascading bugs during v0.2.1 (#900–#916).
+PR-6 (#929) deleted those bash scripts; this Go binary is the
+canonical App-signed commit + tag path.
 
 > **Module path**: `github.com/axonops/audit/cmd/release-tool`
 > **Status**: pre-release (v0.x) — internal binary, NOT published to consumers
@@ -140,8 +141,8 @@ covered ≥ 85 %.
 - [Umbrella tracking issue #918](https://github.com/axonops/audit/issues/918)
 - [PR-2 scope issue #921](https://github.com/axonops/audit/issues/921) — foundation + helpers
 - [PR-3 scope issue #923](https://github.com/axonops/audit/issues/923) — subcommands (this revision)
-- [`scripts/release/`](../../scripts/release/) — the shell scripts being replaced (deletion in PR-6)
-- [`docs/releasing.md`](../../docs/releasing.md) — operator-facing release playbook (updated in PR-6)
+- [`scripts/release/`](../../scripts/release/) — the surviving shell helpers; the v0.2.1 App-signed bash helpers were deleted in PR-6 (#929)
+- [`docs/releasing.md`](../../docs/releasing.md) — operator-facing release playbook
 
 [godoc-badge]: https://pkg.go.dev/badge/github.com/axonops/audit/cmd/release-tool.svg
 [godoc]: https://pkg.go.dev/github.com/axonops/audit/cmd/release-tool

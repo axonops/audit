@@ -97,6 +97,20 @@ case "$cmd" in
     tag)
         exit 0
         ;;
+    remote)
+        # remote get-url origin — PR-6 (#929) tag-all.sh path for
+        # deriving owner/repo when GH_OWNER/GH_REPO aren't set in
+        # env. Echo $FAKE_GIT_ORIGIN_URL when set; else exit 1 (no
+        # origin), mirroring real git's behaviour.
+        if [[ "${subargs[0]:-}" == "get-url" && "${subargs[1]:-}" == "origin" ]]; then
+            if [[ -n "${FAKE_GIT_ORIGIN_URL:-}" ]]; then
+                echo "$FAKE_GIT_ORIGIN_URL"
+                exit 0
+            fi
+            exit 1
+        fi
+        exit 0
+        ;;
     push)
         # push origin <tag>
         for a in "${subargs[@]}"; do

@@ -5,38 +5,41 @@ that survived the v0.2.2 PR-3 typed-Go rewrite (#925).
 
 ## Why this exists
 
-`scripts/release/gh-graphql-commit.sh` and
-`scripts/release/gh-graphql-tag.sh` were the bash + jq + `gh` CLI
+The two App-signed commit + tag helpers were the bash + jq + `gh` CLI
 chokepoints that produced eight cascading bugs in v0.2.1
-(#900-#916). PR-3 replaced them with `cmd/release-tool`. These
-five scripts stay shell because their work — string-mangling
-`go.mod`, parsing `make print-publish-modules`, `git tag`
-plumbing — is shell-native and porting to Go would not buy
+(#900-#916). PR-3 replaced them with `cmd/release-tool`; PR-6 (#929)
+deleted them. These five surviving scripts stay shell because their
+work — string-mangling `go.mod`, parsing `make print-publish-modules`,
+`git tag` plumbing — is shell-native and porting to Go would not buy
 enough type safety to justify the churn. Each one was edited at
 least once during the v0.2.1 cascade, though, so they need test
-scaffolding before PR-6 wires `release-tool` into `release.yml`.
+scaffolding.
 
 ## What is covered
 
 | Script | LoC | Tests |
 |---|---:|---:|
-| `check-tag-conflicts.sh` | 72 | 7 |
-| `tag-all.sh` | 131 | 7 |
-| `update-deps.sh` | 121 | 7 |
-| `regen-docs.sh` | 132 | 6 |
-| `bump-example-deps.sh` | 81 | 6 |
-| **Total** | **537** | **33** |
+| `check-tag-conflicts.sh` | 7 | 7 |
+| `tag-all.sh` | 18 | 18 |
+| `update-deps.sh` | 7 | 7 |
+| `regen-docs.sh` | 6 | 6 |
+| `bump-example-deps.sh` | 6 | 6 |
+| **Total** | — | **44** |
 
 Plus three meta-tests for the fixture stub binaries
-(`fixtures/bin/{go,git,make}`) — one per stub. **Total: 36 tests.**
+(`fixtures/bin/{go,git,make}`) and 24 grep-based regression tests
+for `.github/workflows/release.yml` + the composite action at
+`.github/actions/build-release-tool/`. **Total: 74 tests.**
 
 ## What is **not** covered
 
-- `gh-graphql-commit.sh` and `gh-graphql-tag.sh` — being deleted in
-  the umbrella plan's PR-6. Their behaviour is locked by the typed
-  Go tests in `cmd/release-tool/internal/{ghclient,allowlist,sha,gitstatus}`
+- The deleted bash commit + tag helpers — their behaviour is locked
+  by the typed Go tests in
+  `cmd/release-tool/internal/{ghclient,allowlist,sha,gitstatus}`
   and the named-regression suite in
   `cmd/release-tool/regression_named_test.go`.
+- `release.yml` text — covered by the dedicated grep-based suite at
+  `tests/release-scripts/release-yml-grep.bats`.
 
 ## Running locally
 

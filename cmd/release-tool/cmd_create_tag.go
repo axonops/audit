@@ -44,8 +44,7 @@ type createTagArgs struct {
 
 // runCreateTag implements the `create-tag` subcommand.
 //
-// Idempotent semantics (regression for #911 / gh-graphql-tag.sh
-// BLOCKER-3):
+// Idempotent semantics (regression for #911 / v0.2.1 BLOCKER-3):
 //   - tag absent → create, exit 0
 //   - tag exists at same SHA → exit 4 (idempotent no-op)
 //   - tag exists at different SHA → exit 1 (history contamination)

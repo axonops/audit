@@ -114,13 +114,17 @@ if (( ${#failed[@]} > 0 )); then
       for t in "${failed[@]}"; do echo "- \`$t\`"; done
       echo
       echo '### Recovery'
-      echo 'After investigating the cause, push the missing tags from a clean checkout at the same SHA:'
+      echo
+      echo 'After investigating the cause, push the missing tags from a clean checkout at the same SHA.'
+      echo 'The repository has `required_signatures` ON, so raw `git tag -a` + `git push` would fail —'
+      echo 'use the App-signed helper (PR-6 swaps this for `release-tool create-tag`):'
       echo
       echo '```bash'
       echo "git fetch origin"
       for t in "${failed[@]}"; do
-        echo "git tag -a \"$t\" -m \"Release $t\" \"$SHA\""
-        echo "git push origin \"$t\""
+        # MAJOR-5 fix (#927): the App-signed helper, not raw git/push,
+        # because required_signatures blocks the latter.
+        echo "scripts/release/gh-graphql-tag.sh --tag \"$t\" --sha \"$SHA\" --message \"Release $t\""
       done
       echo '```'
     } >> "$GITHUB_STEP_SUMMARY"

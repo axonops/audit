@@ -21,7 +21,7 @@
 #   stub_path             — prepends FIXTURES_BIN to PATH so the
 #                            fixture binaries shadow the real ones
 
-REPO_ROOT="${BATS_TEST_DIRNAME}/../.."
+REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"
 SCRIPTS_DIR="${REPO_ROOT}/scripts/release"
 FIXTURES_BIN="${BATS_TEST_DIRNAME}/fixtures/bin"
 

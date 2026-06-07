@@ -8,21 +8,56 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **bats-core test harness for the surviving release shell scripts
-  (#925).** PR-4 of the v0.2.2 cascade-prevention plan: a
-  subprocess-driven test suite for `check-tag-conflicts.sh`,
-  `tag-all.sh`, `update-deps.sh`, `regen-docs.sh`, and
-  `bump-example-deps.sh` (37 named tests + 3 stub-binary
-  meta-tests). Each test runs the production script against a
-  temp git repo + fake `make`/`go`/`git` binaries that record
-  their argv to an assertion file. Caught and fixed two latent
-  bugs while writing the tests: single-line `require` directives
-  were silently skipped by both `update-deps.sh:103` and
-  `bump-example-deps.sh:48` because their regexes assumed only the
-  block-form `require (...)` shape. Adds `make
-  test-release-scripts` target, wires `Test - Release Scripts` job
-  into CI's `ci-pass` aggregator, and SHA-pins the bats-core
-  install step.
+- **v0.2.2 cascade-prevention release-tool + harness + workflow
+  hardening (#918, #921, #923, #925, #927).** Multi-PR effort
+  spanning the typed-Go release-tool binary, its bats harness, and
+  the release.yml hardening pass that should have run before
+  v0.2.1.
+
+  **PR-4 — bats-core test harness for the surviving release
+  shell scripts (#925).** Subprocess-driven test suite for
+  `check-tag-conflicts.sh`, `tag-all.sh`, `update-deps.sh`,
+  `regen-docs.sh`, and `bump-example-deps.sh` (37 named tests +
+  3 stub-binary meta-tests). Each test runs the production
+  script against a temp git repo + fake `make`/`go`/`git`
+  binaries that record their argv to an assertion file. Caught
+  and fixed two latent bugs while writing the tests: single-line
+  `require` directives were silently skipped by both
+  `update-deps.sh:103` and `bump-example-deps.sh:48` because
+  their regexes assumed only the block-form `require (...)`
+  shape. Adds `make test-release-scripts` target, wires
+  `Test - Release Scripts` job into CI's `ci-pass` aggregator,
+  and SHA-pins the bats-core install step.
+
+  **PR-5 — `release.yml` hardening from the devops audit
+  (#927).** Closes 6 BLOCKERs + 9 MAJORs + 5 MINORs in
+  `.github/workflows/release.yml` and `scripts/release/tag-all.sh`.
+  BLOCKERs include: `gh pr create | tail | sed` parsing replaced
+  with `--json url --jq '.url'` (#911 anti-pattern class); the
+  REST `allow_auto_merge` null case classified explicitly instead
+  of mis-rendered as `false`; the wait-for-pr-merge recovery
+  snippet now validates `MERGE_SHA =~ ^[0-9a-f]{40}$` before the
+  emitted recovery command runs; `gh pr list` captured-then-
+  iterated so a transient gh failure surfaces; `make
+  print-publish-modules` output captured-then-validated at all
+  three sites (silent-empty was the v0.2.0 release run
+  26802604151 root cause); the `git push --delete || true`
+  swallow dropped. MAJORs include: configurable
+  `merge_timeout_minutes` workflow_dispatch input; goreleaser
+  now asserts a successful CI run exists for the tag SHA;
+  `tag-all.sh` partial-failure recovery snippet calls
+  gh-graphql-tag.sh (signed) instead of raw `git tag/push`
+  (which would fail `required_signatures`); the smoke-test
+  imports list is generated from `print-publish-modules`
+  instead of a hardcoded drift-prone block; mutation-test-attach
+  signs with the App token for consistent release-mutation
+  identity. 14 named grep regression tests in
+  `tests/release-scripts/release-yml-grep.bats` lock each fix
+  against future drift, and 1 named bats test in `tag-all.bats`
+  locks the recovery-snippet contract. PR-5 is the precondition
+  for PR-6 (workflow integration with `release-tool`); the
+  complete PR-6 swap inventory is documented at
+  `docs/releasing.md` "PR-6 Workflow Swap Inventory".
 - **`cmd/release-tool` release automation binary
   (#918, #921, #923).** Replaces (in PR-6) the bash
   `gh-graphql-{commit,tag}.sh` scripts that produced 8 cascading

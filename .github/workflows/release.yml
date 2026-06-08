@@ -569,21 +569,27 @@ jobs:
             --message "release: pin inter-module deps to $PUBLISH_VERSION" \
             --auto-create-branch
 
-          # BLOCKER-A fix (#927): `gh pr create | tail | sed` is
-          # exactly the v0.2.1 anti-pattern (#911 class). Use the
-          # typed `--json url` form so we get a structured response —
-          # no progress-line parsing, no shell pipeline that swallows
-          # gh's exit code, and the URL is the source of truth instead
-          # of a regex on stdout.
+          # BLOCKER-A fix (#927, corrected): `gh pr create | tail | sed`
+          # was the v0.2.1 anti-pattern (#911 class). The PR-5 attempt
+          # to replace it with `--json url --jq '.url'` was wrong:
+          # `gh pr create` does NOT support `--json` (that flag only
+          # exists on `gh pr view`/`list`). The v0.2.2 dispatch run
+          # 27149700917 caught this at the call site. On success,
+          # `gh pr create` writes exactly the PR URL to stdout — no
+          # progress lines, no decoration — so the safe pattern is:
           #
-          # Requires gh ≥ 2.25 for `--json` on `pr create`; ubuntu-
-          # latest's preinstalled gh is well past this floor. The
-          # `gh --version` assertion in `preflight` guarantees it.
+          #   1. Capture stdout into PR_URL (no parsing).
+          #   2. Validate the captured string IS a github PR URL.
+          #   3. The validation regex below is the source of truth;
+          #      a malformed value aborts before the URL is used.
+          #
+          # Set -o pipefail isn't needed because there is no pipeline.
+          # The exit code of `gh pr create` propagates directly to the
+          # script's $? via `set -e` at the workflow shell level.
           PR_URL=$(gh pr create \
             --base main --head "$BRANCH" \
             --title "release: $PUBLISH_VERSION" \
-            --body "Automated release PR (#513). Tags every published module at the merge commit. Approve to let auto-merge fire after CI green." \
-            --json url --jq '.url')
+            --body "Automated release PR (#513). Tags every published module at the merge commit. Approve to let auto-merge fire after CI green.")
           if ! [[ "$PR_URL" =~ ^https://github\.com/.+/pull/[0-9]+$ ]]; then
             echo "::error::gh pr create returned an unexpected URL: $PR_URL"
             exit 1

@@ -24,11 +24,21 @@ setup() {
 
 @test "test_release_yml_does_not_use_tail_sed_to_parse_pr_create_output" {
     # The v0.2.1 anti-pattern was `gh pr create ... | tail -n1 | sed ...`.
-    # Assert the fixed `--json url --jq '.url'` form is present AND
-    # the bad pattern is absent. Use `--` to separate grep options
-    # from the pattern (the pattern starts with `--`).
-    grep -qF -- "--json url --jq '.url'" "$RELEASE_YML"
+    # The PR-5 (#927) attempt at `--json url --jq '.url'` was wrong:
+    # `gh pr create` does NOT support `--json` — that flag exists
+    # only on `gh pr view`/`list`. The v0.2.2 dispatch run
+    # 27149700917 surfaced this. The correct pattern is to capture
+    # stdout directly (gh pr create writes only the URL on success)
+    # and validate the shape with a regex.
+    #
+    # Assert:
+    #   1. The PR_URL capture has NO sub-command parsing (no tail,
+    #      no sed, no --json, no --jq).
+    #   2. The validation regex on the captured value is present.
     ! grep -qE 'gh pr create.+tail -n.*1' "$RELEASE_YML"
+    ! grep -qF -- "--json url --jq '.url'" "$RELEASE_YML"
+    grep -qF 'PR_URL=$(gh pr create' "$RELEASE_YML"
+    grep -qF -- '[[ "$PR_URL" =~ ^https://github\.com/.+/pull/[0-9]+$ ]]' "$RELEASE_YML"
 }
 
 # --- BLOCKER-B — allow_auto_merge null classified, not silently false ---

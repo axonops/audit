@@ -9,20 +9,28 @@
 name: GoReleaser
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release tag to (re-)run GoReleaser against, e.g. v0.2.2'
+        type: string
+        required: true
 
 permissions:
   contents: read
 
-# Shared concurrency group with release.yml (#516 devops review).
-# release.yml uses `release-${{ inputs.version || github.ref_name }}`
-# at the workflow level. The goreleaser.yml manual-rerun trigger
-# matches the same group so both workflows queue behind one another
-# rather than racing on the same GitHub Release / Sigstore identity.
+# Shared concurrency group with release.yml (#516 devops review,
+# PR-7 #943 BLOCKER-7 fix). release.yml uses
+# `release-${{ inputs.version || github.ref_name }}` at the workflow
+# level; the manual-rerun trigger here resolves to the SAME group via
+# the required `version` input. Without a required input, dispatching
+# from any branch produced `release-<branch>` (e.g. `release-main`),
+# which did NOT match the automated tag flow's group — two release
+# runs could race on the same GitHub Release / Sigstore identity.
 # cancel-in-progress: false so a manual rerun queues behind an
 # automated tag run rather than killing it mid-flight.
 concurrency:
-  group: release-${{ inputs.version || github.ref_name }}
+  group: release-${{ inputs.version }}
   cancel-in-progress: false
 
 jobs:
@@ -30,16 +38,51 @@ jobs:
     name: Release
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    if: github.ref_type == 'tag'
     permissions:
       contents: write
       id-token: write      # required for attestation OIDC
       attestations: write   # required for attestation upload
     steps:
-      - name: Checkout
+      - name: Validate version input
+        # PR-7 (#943) BLOCKER-7 fix: a malformed version input would
+        # produce `release-junk` as the concurrency group AND fetch
+        # whatever ref happens to resolve. Refuse early with the same
+        # regex tag-all.sh enforces, so a typo can't trigger a build.
+        #
+        # Build metadata (`v1.2.3+abc`) is deliberately rejected: the
+        # Go module proxy treats `v1.2.3+meta` as a distinct version
+        # from `v1.2.3` and downstream tooling (proxy.golang.org,
+        # `go mod download`) breaks on it. The regex matches the
+        # exact set Go's release pipeline accepts.
+        #
+        # The 64-char length cap is defence in depth — without it, a
+        # 16KB string passing the regex would become a 16KB
+        # concurrency-group name (GitHub silently truncates at 255
+        # and groups with the same prefix collide).
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "${#VERSION}" -gt 64 ]; then
+            echo "::error::version input too long (${#VERSION} chars, max 64): '$VERSION'"
+            exit 2
+          fi
+          if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
+            echo "::error::invalid version input: '$VERSION' (expected vMAJOR.MINOR.PATCH[-PRERELEASE])"
+            exit 2
+          fi
+          echo "version: $VERSION"
+
+      - name: Checkout release tag
+        # PR-7 (#943): pin to the tag commit, NOT the dispatcher's
+        # branch. The previous `fetch-depth: 0` without `ref:` left
+        # GoReleaser building from whatever ref the dispatcher
+        # happened to be on, which for a manual rerun should be the
+        # tag itself.
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
+          ref: ${{ inputs.version }}
 
       - name: Verify tag is on main
         run: |

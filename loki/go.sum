@@ -1,6 +1,7 @@
-github.com/axonops/audit v0.1.13 h1:GIZcbSTwzBPcUieI3GPA1XRhP7LnciA8Tf66EHkbcfA=
-github.com/axonops/audit v0.1.13/go.mod h1:aHsnr96RGIdmWBAgLWJYfyZPdLEgP7Su/KZJT+/w0rA=
-github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
+github.com/axonops/audit v0.2.1 h1:Z1IkA9taOOehIbooJ0TeH4A07AF+MXIaqF5dqdhOA+g=
+github.com/axonops/audit v0.2.1/go.mod h1:utke4Y71RtS24e+bkRRgaQvyu6ht0anU61jxjcNdXIk=
+github.com/axonops/syncmap v1.0.0 h1:LioA4tccTuYsMG+i4XeJJ9tXsoxrbdiLCxUrUmQuN5o=
+github.com/axonops/syncmap v1.0.0/go.mod h1:UzPuU30i9SaKB5xYEbkYuuuXcy1yrasWfv+1oZnuVCs=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/goccy/go-yaml v1.19.2 h1:PmFC1S6h8ljIz6gMRBopkjP1TVT7xuwrButHID66PoM=
@@ -15,6 +16,8 @@ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 go.uber.org/goleak v1.3.0 h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=
 go.uber.org/goleak v1.3.0/go.mod h1:CoHD4mav9JJNrW/WLlf7HGZPjdw8EucARQHekz1X6bE=
+golang.org/x/crypto v0.52.0 h1:RMs7fP2rXdep0CftQlK8Uf+kibLm7qkCcradZWYz988=
+golang.org/x/crypto v0.52.0/go.mod h1:1QgfPxDqh0T2M/elOJtp9RvuR95kVjir0e6/BvEmGbc=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 h1:qIbj1fsPNlZgppZ+VLlY7N33q108Sa+fhmuc+sWQYwY=
 gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=

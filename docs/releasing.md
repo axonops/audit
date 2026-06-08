@@ -972,24 +972,40 @@ per-module, not repository-wide.
 
 ---
 
-## For Maintainers: PR-6 Workflow Swap Inventory (v0.2.2)
+## For Maintainers: Release-Tool Binary
 
-The v0.2.2 cascade-prevention plan (#918) introduces
-`cmd/release-tool` — a typed Go binary that replaces the two
-state-mutating bash scripts that produced 8 cascading bugs in
-v0.2.1. PR-5 (#927) hardens release.yml; PR-6 swaps these exact
-call sites to invoke `release-tool` and deletes the bash helpers.
+The v0.2.2 cascade-prevention plan (#918) introduced
+[`cmd/release-tool`](../cmd/release-tool) — a typed Go binary that
+replaces the two state-mutating App-signed helpers that produced 8
+cascading bugs in v0.2.1 (#900-#916). PR-6 (#929) deleted the bash
+helpers and switched every call site to the Go binary.
 
-| File | Line(s) | Currently | After PR-6 |
-|---|---|---|---|
-| `.github/workflows/release.yml` | ~496-499 | `scripts/release/gh-graphql-commit.sh --branch ... --message ... --auto-create-branch` | `release-tool commit-pinned-deps --owner --repo --branch --message --auto-create-branch` |
-| `scripts/release/tag-all.sh` | ~90-93 | `scripts/release/gh-graphql-tag.sh --tag --sha --message` | `release-tool create-tag --owner --repo --tag --sha --message` |
-| `scripts/release/tag-all.sh` | ~121-124 (emitted recovery snippet in `$GITHUB_STEP_SUMMARY`) | `git tag -a / git push` | `release-tool create-tag --owner --repo --tag --sha --message` |
+| Job | Step | Subcommand |
+|---|---|---|
+| `update-deps-pr` | "Open release PR with auto-merge" | `release-tool commit-pinned-deps --owner --repo --branch --message --auto-create-branch` |
+| `tag-all` | per-tag loop in `scripts/release/tag-all.sh` | `release-tool create-tag --owner --repo --tag --sha --message` |
+| `tag-all` | emitted recovery snippet in `$GITHUB_STEP_SUMMARY` | `release-tool create-tag --owner --repo --tag --sha --message` |
+| `wait-for-pr-merge` | emitted recovery snippet on merge timeout | `release-tool create-tag --owner --repo --tag --sha --message` |
 
-PR-6 also deletes `scripts/release/gh-graphql-commit.sh` and
-`scripts/release/gh-graphql-tag.sh`. No other call sites of those
-two scripts exist in the workflow surface; see the PR-5 devops
-audit attached to #927.
+The binary is built once per job in `$RUNNER_TEMP/release-tool`
+and exported as `RELEASE_TOOL` for downstream steps. Both the
+workflow integration and `tag-all.sh` resolve `$RELEASE_TOOL`
+explicitly; operators invoking `tag-all.sh` from a local recovery
+checkout MUST set it after building the binary:
+
+```bash
+(cd cmd/release-tool && go build -trimpath -o /tmp/release-tool .)
+RELEASE_TOOL=/tmp/release-tool \
+GH_OWNER=axonops GH_REPO=audit \
+  scripts/release/tag-all.sh v0.2.2 <merge-sha>
+```
+
+Behaviour is locked end-to-end by the typed-Go test packages
+(`cmd/release-tool/internal/{ghclient,allowlist,sha,gitstatus}`),
+the named-regression suite (`cmd/release-tool/regression_named_test.go`),
+the bats harness (`tests/release-scripts/tag-all.bats`), and the
+grep-based release.yml regression suite
+(`tests/release-scripts/release-yml-grep.bats`).
 
 ### The Release Workflow
 

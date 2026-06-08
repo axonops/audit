@@ -9,10 +9,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - **v0.2.2 cascade-prevention release-tool + harness + workflow
-  hardening (#918, #921, #923, #925, #927).** Multi-PR effort
-  spanning the typed-Go release-tool binary, its bats harness, and
-  the release.yml hardening pass that should have run before
-  v0.2.1.
+  hardening (#918, #921, #923, #925, #927, #929).** Multi-PR effort
+  spanning the typed-Go release-tool binary, its bats harness, the
+  release.yml hardening pass that should have run before v0.2.1, and
+  the final workflow integration that retires the bash + jq + gh-CLI
+  helpers entirely.
 
   **PR-4 — bats-core test harness for the surviving release
   shell scripts (#925).** Subprocess-driven test suite for
@@ -45,23 +46,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   swallow dropped. MAJORs include: configurable
   `merge_timeout_minutes` workflow_dispatch input; goreleaser
   now asserts a successful CI run exists for the tag SHA;
-  `tag-all.sh` partial-failure recovery snippet calls
-  gh-graphql-tag.sh (signed) instead of raw `git tag/push`
-  (which would fail `required_signatures`); the smoke-test
-  imports list is generated from `print-publish-modules`
-  instead of a hardcoded drift-prone block; mutation-test-attach
-  signs with the App token for consistent release-mutation
-  identity. 14 named grep regression tests in
-  `tests/release-scripts/release-yml-grep.bats` lock each fix
-  against future drift, and 1 named bats test in `tag-all.bats`
-  locks the recovery-snippet contract. PR-5 is the precondition
-  for PR-6 (workflow integration with `release-tool`); the
-  complete PR-6 swap inventory is documented at
-  `docs/releasing.md` "PR-6 Workflow Swap Inventory".
+  `tag-all.sh` partial-failure recovery snippet calls the App-signed
+  helper instead of raw `git tag/push` (which would fail
+  `required_signatures`); the smoke-test imports list is generated
+  from `print-publish-modules` instead of a hardcoded drift-prone
+  block; mutation-test-attach signs with the App token for
+  consistent release-mutation identity. 14 named grep regression
+  tests in `tests/release-scripts/release-yml-grep.bats` lock each
+  fix against future drift, and 1 named bats test in `tag-all.bats`
+  locks the recovery-snippet contract.
+
+  **PR-6 — `release-tool` workflow integration (#929).** Final piece
+  of the cascade-prevention plan: `release.yml`'s `update-deps-pr`
+  job now builds `cmd/release-tool` once per run into
+  `$RUNNER_TEMP/release-tool` and invokes `release-tool
+  commit-pinned-deps`; `scripts/release/tag-all.sh` resolves the
+  same `$RELEASE_TOOL` env var and shells out per-tag to
+  `release-tool create-tag` (owner / repo come from `$GH_OWNER` /
+  `$GH_REPO` in CI, parsed from `git remote get-url origin` for
+  local recovery). Both copy-paste recovery snippets (the
+  `wait-for-pr-merge` timeout summary and the `tag-all.sh`
+  partial-push summary) now emit `release-tool create-tag` instead
+  of a bare-git or bash-helper recipe. Deletes
+  `scripts/release/gh-graphql-commit.sh` and
+  `scripts/release/gh-graphql-tag.sh` outright — repo-wide grep for
+  both filenames returns zero matches. Adds five new named bats
+  tests (`test_tag_all_pushes_via_release_tool_create_tag`,
+  `test_tag_all_recovery_snippet_uses_release_tool_create_tag`,
+  `test_tag_all_release_tool_failure_collects_per_tag`,
+  `test_tag_all_missing_release_tool_binary_exits_2_with_guidance`,
+  `test_tag_all_derives_owner_repo_from_origin_when_env_unset`,
+  `test_tag_all_unsupported_origin_url_exits_2`) and four new grep
+  regression tests (`test_release_yml_uses_release_tool_commit_pinned_deps`,
+  `test_release_yml_no_gh_graphql_helpers`,
+  `test_release_yml_builds_release_tool_with_trimpath`,
+  `test_release_yml_recovery_uses_release_tool_not_bash_helpers`).
 - **`cmd/release-tool` release automation binary
-  (#918, #921, #923).** Replaces (in PR-6) the bash
-  `gh-graphql-{commit,tag}.sh` scripts that produced 8 cascading
-  bugs in v0.2.1. PR-2 (#921) laid the foundation: typed `ghclient`
+  (#918, #921, #923, #929).** Replaces the App-signed commit + tag
+  bash + jq + gh-CLI helpers that produced 8 cascading bugs in
+  v0.2.1 (deleted in PR-6 #929). PR-2 (#921) laid the foundation: typed `ghclient`
   (3 GitHub API endpoints over `net/http` + slog with
   Authorization-header redaction + per-call request-ID), NUL-safe
   `gitstatus` parser, `allowlist` for go.mod/go.sum-only

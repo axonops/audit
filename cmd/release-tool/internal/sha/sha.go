@@ -18,7 +18,7 @@
 // bypassed on HTTP error responses: a 404 against
 // `gh api .../git/ref/heads/<branch> --jq '.object.sha'` does not
 // produce empty output — it dumps the raw error JSON body to stdout.
-// Naïve callers (including the prior bash gh-graphql-commit.sh)
+// Naïve callers (including the v0.2.1 bash commit helper)
 // treated the error JSON as a SHA and forwarded it into the next
 // API call, producing opaque silent failures. v0.2.1 release runs
 // 26889155834 and 26894419954 tripped exactly this. Always pass any

@@ -481,6 +481,14 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Build release-tool
+        # PR-6 (#929): replaces the v0.2.1 bash commit helper. The Go
+        # binary is the canonical App-signed commit path; the bash
+        # helper is deleted in this PR. The composite action sets up
+        # its own Go env, pins GOPROXY/GOSUMDB/GOFLAGS, and exports
+        # $RELEASE_TOOL for downstream steps in this job.
+        uses: ./.github/actions/build-release-tool
+
       - name: Run update-deps.sh
         env:
           PUBLISH_VERSION: ${{ needs.preflight.outputs.version }}
@@ -493,7 +501,7 @@ jobs:
           PUBLISH_VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           set -euo pipefail
-          # gh-graphql-commit.sh enforces a release-series branch
+          # the v0.2.1 bash commit helper enforces a release-series branch
           # name (`^release/v[0-9]+\.[0-9]+\.x$`) per security
           # hardening in #841. The series branch is a transient
           # working branch — recreated on every release run, so
@@ -540,18 +548,23 @@ jobs:
             exit 1
           fi
 
-          # Stage all changes so gh-graphql-commit.sh can enumerate
-          # them via `git status --porcelain`. The script enforces an
-          # allowlist (go.mod / go.sum only); anything outside it
-          # fails the commit.
+          # Stage all changes so release-tool can enumerate them via
+          # `git status --porcelain` (NUL-delimited, per #907). The
+          # binary enforces an allowlist (go.mod / go.sum only);
+          # anything outside it fails the commit.
           git add -A
 
-          # App-signed commit via createCommitOnBranch (#841). The
-          # legacy `git commit + git push` required toggling
-          # required_signatures off; the GraphQL mutation signs with
-          # the App identity server-side and satisfies the branch
-          # protection rule directly.
-          scripts/release/gh-graphql-commit.sh \
+          # App-signed commit via createCommitOnBranch (#841,
+          # PR-6 #929). The legacy `git commit + git push` required
+          # toggling required_signatures off; the GraphQL mutation
+          # signs with the App identity server-side and satisfies the
+          # branch protection rule directly. The bash helper this
+          # replaced (`the v0.2.1 bash commit helper`) was the source of 8 of
+          # the v0.2.1 cascade bugs (#900-#916); the Go binary carries
+          # named regression tests for every one of them.
+          "$RELEASE_TOOL" commit-pinned-deps \
+            --owner "${{ github.repository_owner }}" \
+            --repo "${{ github.event.repository.name }}" \
             --branch "$BRANCH" \
             --message "release: pin inter-module deps to $PUBLISH_VERSION" \
             --auto-create-branch
@@ -673,8 +686,9 @@ jobs:
           # MAJOR-5 fix (#927): the previous recovery used
           # `git tag -a` + `git push`, but the repo has
           # required_signatures ON. The operator would discover this
-          # the hard way. Use the App-signed gh-graphql-tag.sh
-          # (PR-6 will swap this for `release-tool create-tag`).
+          # the hard way. Use the App-signed release-tool create-tag
+          # (PR-6 #929 swapped this from the bash the v0.2.1 bash tag helper
+          # helper).
           {
             echo "## wait-for-pr-merge timed out"
             echo
@@ -682,13 +696,23 @@ jobs:
             echo
             echo '### Recovery'
             echo
-            echo 'The PR is still open and may auto-merge later. Once it merges, push the core tag at the merge commit via the App-signed helper (raw `git push` would fail required_signatures):'
+            echo 'The PR is still open and may auto-merge later. Once it merges, push the core tag at the merge commit via the App-signed release-tool binary (raw `git push` would fail required_signatures):'
             echo
             echo '```bash'
             echo "MERGE_SHA=\$(gh pr view $PR --json mergeCommit --jq '.mergeCommit.oid')"
             echo '[[ "$MERGE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "PR has not merged yet — re-check in a few minutes."; exit 1; }'
             echo "git fetch origin"
-            echo "scripts/release/gh-graphql-tag.sh --tag \"\${VERSION}\" --sha \"\$MERGE_SHA\" --message \"Release \${VERSION}\""
+            # PR-6 (#929) devops MAJOR-4 fix: pin the operator's
+            # working tree to the merge SHA before building the
+            # release-tool binary. The previous snippet assumed a
+            # clean checkout, but the operator may paste this into a
+            # stale or dirty clone and build the wrong version.
+            echo 'git checkout --detach "$MERGE_SHA" --'
+            echo "(cd cmd/release-tool && go build -trimpath -o /tmp/release-tool .)"
+            # PR-6 (#929) security M1 fix: quote --owner / --repo so
+            # operator copy-paste stays robust against future repo
+            # renames or namespace changes.
+            echo "/tmp/release-tool create-tag --owner \"${{ github.repository_owner }}\" --repo \"${{ github.event.repository.name }}\" --tag \"\${VERSION}\" --sha \"\$MERGE_SHA\" --message \"Release \${VERSION}\""
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::error::Release PR not merged within ${MERGE_TIMEOUT_MINUTES} min — see job summary for the recovery command."
@@ -722,7 +746,11 @@ jobs:
   tag-all:
     name: Tag all published modules
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # PR-6 (#929) MAJOR fix: bumped 10 → 15. The job now pays for
+    # setup-go install + module cache + release-tool build (~1-2 min
+    # cold) on top of the per-module REST tag creations. 10 was
+    # tight; 15 matches the parallel wait-for-pr-merge / verify jobs.
+    timeout-minutes: 15
     needs: [preflight, wait-for-pr-merge]
     if: |
       always() &&
@@ -770,10 +798,25 @@ jobs:
           ref: ${{ steps.sha.outputs.merge_sha }}
           token: ${{ steps.app.outputs.token }}
 
+      - name: Build release-tool
+        # PR-6 (#929): tag-all.sh now invokes release-tool create-tag
+        # per published module via $RELEASE_TOOL. The composite
+        # action sets up Go, pins the proxy, and exports
+        # $RELEASE_TOOL for the next step.
+        uses: ./.github/actions/build-release-tool
+
       - name: Run tag-all.sh (idempotent)
         env:
           PUBLISH_VERSION: ${{ needs.preflight.outputs.version }}
           MERGE_SHA: ${{ steps.sha.outputs.merge_sha }}
+          GH_OWNER: ${{ github.repository_owner }}
+          GH_REPO: ${{ github.event.repository.name }}
+          # PR-6 (#929) security H1 fix: release-tool reads $GH_TOKEN
+          # via os.Getenv (cmd/release-tool/internal/ghclient). The
+          # tag-all loop calls release-tool per published module; without
+          # the App-token export the binary exits 3 on every iteration
+          # and tag-all reports N hard failures.
+          GH_TOKEN: ${{ steps.app.outputs.token }}
         run: scripts/release/tag-all.sh "$PUBLISH_VERSION" "$MERGE_SHA"
 
   # =====================================================================

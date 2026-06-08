@@ -148,3 +148,130 @@ setup() {
     # checks the named site only).
     ! grep -qE 'SERIES=\$\(echo[[:space:]]+"\$PUBLISH_VERSION"[[:space:]]*\|[[:space:]]*sed' "$RELEASE_YML"
 }
+
+# --- PR-6 (#929) — release.yml uses release-tool, not the deleted bash helpers ---
+
+@test "test_release_yml_uses_release_tool_commit_pinned_deps" {
+    # The Open-release-PR step must shell out to the Go binary, not
+    # the v0.2.1 bash helper. Two anchors must be present together:
+    # the build step and the subcommand invocation. The build step
+    # may live in any job; the subcommand call site must reside
+    # inside update-deps-pr.
+    grep -qF "release-tool" "$RELEASE_YML"
+    grep -qF 'commit-pinned-deps' "$RELEASE_YML"
+    grep -qF '"$RELEASE_TOOL" commit-pinned-deps' "$RELEASE_YML"
+    # --owner / --repo must be propagated from the workflow context.
+    # Use `--` so grep doesn't try to interpret the pattern as a
+    # flag (the pattern starts with `--`).
+    grep -qF -- '--owner "${{ github.repository_owner }}"' "$RELEASE_YML"
+    grep -qF -- '--repo "${{ github.event.repository.name }}"' "$RELEASE_YML"
+}
+
+@test "test_release_yml_no_gh_graphql_helpers" {
+    # Hard requirement (issue #929 AC #1): no reference to the
+    # deleted bash helpers may remain anywhere in release.yml.
+    ! grep -qF "gh-graphql-commit.sh" "$RELEASE_YML"
+    ! grep -qF "gh-graphql-tag.sh" "$RELEASE_YML"
+}
+
+@test "test_release_yml_builds_release_tool_with_trimpath" {
+    # The build step must use -trimpath so the embedded binary
+    # paths don't leak the runner's GOPATH layout into stack
+    # traces. The build was extracted into a composite action in
+    # PR-6 (#929); assertions move with it.
+    ACTION="${REPO_ROOT}/.github/actions/build-release-tool/action.yml"
+    [ -f "$ACTION" ] || skip "composite action missing"
+    grep -qF 'go build -trimpath' "$ACTION"
+    grep -qF '"${RUNNER_TEMP}/release-tool"' "$ACTION"
+    grep -qF 'RELEASE_TOOL=${RUNNER_TEMP}/release-tool' "$ACTION"
+}
+
+@test "test_release_yml_recovery_uses_release_tool_not_bash_helpers" {
+    # The wait-for-pr-merge timeout recovery snippet must reference
+    # `release-tool create-tag`, not the deleted bash helper.
+    grep -qF 'release-tool create-tag' "$RELEASE_YML"
+}
+
+@test "test_release_yml_tag_all_step_propagates_gh_token_to_release_tool" {
+    # PR-6 (#929) security H1: release-tool reads $GH_TOKEN via
+    # os.Getenv. tag-all.sh shells out per published module, so
+    # the "Run tag-all.sh" step MUST export the App token. Without
+    # this, every release fails with N×exit-3 from release-tool.
+    # Anchor: the step's env block must include
+    # `GH_TOKEN: ${{ steps.app.outputs.token }}` alongside
+    # GH_OWNER / GH_REPO.
+    awk '/Run tag-all.sh \(idempotent\)/,/run: scripts\/release\/tag-all.sh/' \
+        "$RELEASE_YML" \
+        | grep -qF 'GH_TOKEN: ${{ steps.app.outputs.token }}'
+}
+
+@test "test_release_yml_uses_composite_build_release_tool_action" {
+    # PR-6 (#929) MINOR-1 fix: extract the duplicate inline
+    # build-release-tool steps into a single composite action so
+    # the two callers (update-deps-pr, tag-all) stay byte-
+    # identical. The action lives at .github/actions/build-release-tool.
+    # Both call sites must reference the composite path.
+    n="$(grep -cF 'uses: ./.github/actions/build-release-tool' "$RELEASE_YML")"
+    [ "$n" -ge 2 ]
+    # An inline build STEP (i.e. a step header named "Build release-tool"
+    # followed by an inline `run: ... go build ...`) MUST NOT reappear:
+    # the composite-action extraction was specifically to prevent the
+    # release.yml callers from drifting against each other. The
+    # operator-pastable recovery snippet inside the wait-for-pr-merge
+    # block is a different beast (a here-doc echo, not a build step)
+    # and is allowed.
+    ! awk '
+        /^      - name: Build release-tool$/ {flag=1; next}
+        flag && /^      - name:/ {flag=0}
+        flag && /run:[[:space:]]*\|/ {found=1}
+        END {exit found ? 0 : 1}
+    ' "$RELEASE_YML"
+}
+
+@test "test_release_yml_recovery_pins_working_tree_to_merge_sha" {
+    # PR-6 (#929) devops MAJOR-4 fix: the operator-paste recovery
+    # snippet pins the working tree to $MERGE_SHA before building
+    # release-tool. Without this the operator may build a stale
+    # binary from a dirty local clone.
+    grep -qF 'git checkout --detach "$MERGE_SHA" --' "$RELEASE_YML"
+}
+
+@test "test_release_yml_recovery_quotes_owner_and_repo" {
+    # PR-6 (#929) security M1: the operator-paste recovery
+    # snippet quotes --owner / --repo so future repo renames or
+    # namespace changes don't break copy-paste behaviour.
+    grep -qF -- '--owner "${{ github.repository_owner }}"' "$RELEASE_YML"
+    grep -qF -- '--repo "${{ github.event.repository.name }}"' "$RELEASE_YML"
+}
+
+@test "test_release_yml_tag_all_timeout_minutes_at_least_15" {
+    # PR-6 (#929) devops MAJOR-1 fix: tag-all now does Go setup +
+    # release-tool build + per-module REST tag creates. timeout=10
+    # was too tight; bumped to ≥15 to match the parallel
+    # wait-for-pr-merge / verify jobs.
+    awk '/^  tag-all:/,/^  goreleaser:/' "$RELEASE_YML" \
+        | grep -qE 'timeout-minutes: (1[5-9]|[2-9][0-9])'
+}
+
+@test "test_build_release_tool_action_pins_proxy_and_readonly" {
+    # PR-6 (#929) devops MAJOR-3 fix: the composite action pins
+    # GOPROXY / GOSUMDB / GOFLAGS for the release-critical build
+    # so a hostile runner env can't substitute a malicious proxy
+    # or silently mutate go.sum.
+    ACTION="${REPO_ROOT}/.github/actions/build-release-tool/action.yml"
+    [ -f "$ACTION" ] || skip "composite action missing"
+    grep -qF 'GOFLAGS: -mod=readonly' "$ACTION"
+    grep -qF 'GOPROXY: https://proxy.golang.org,direct' "$ACTION"
+    grep -qF 'GOSUMDB: sum.golang.org' "$ACTION"
+}
+
+@test "test_build_release_tool_action_caches_on_submodule_go_sum" {
+    # PR-6 (#929) devops MAJOR-2 fix: the composite action caches
+    # on cmd/release-tool/go.sum (the actual sub-module deps)
+    # rather than the root go.sum, so root-module changes don't
+    # uselessly bust this cache.
+    ACTION="${REPO_ROOT}/.github/actions/build-release-tool/action.yml"
+    [ -f "$ACTION" ] || skip "composite action missing"
+    grep -qF 'cache-dependency-path: cmd/release-tool/go.sum' "$ACTION"
+    grep -qF 'go-version-file: cmd/release-tool/go.mod' "$ACTION"
+}

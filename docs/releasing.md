@@ -811,10 +811,22 @@ retract the bad one. See "Retracting a Bad Release" below.
 #### GoReleaser failed but tags are pushed
 
 Re-run GoReleaser manually via [Actions →
-GoReleaser](https://github.com/axonops/audit/actions/workflows/goreleaser.yml)
-on the `v*` tag ref. The standalone `goreleaser.yml` workflow exists for
-exactly this case; it runs only the binary-build + attestation step
-without touching tags.
+GoReleaser](https://github.com/axonops/audit/actions/workflows/goreleaser.yml).
+The standalone `goreleaser.yml` workflow exists for exactly this case;
+it runs only the binary-build + attestation step without touching tags.
+
+The dispatch form requires a `version` input — the tag string to
+build against, e.g. `v0.2.2`. The input is validated against
+`^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$` and used as the
+workflow's concurrency group so a manual rerun queues behind any
+in-flight automated run of the same version rather than racing it
+on the GitHub Release / Sigstore identity.
+
+GoReleaser's own `before.hooks` runs `make check-release-invariants
+VERSION=<tag>` to refuse the build outright if any published module's
+`go.mod` doesn't reference the target version — catching the case
+where someone pushes an out-of-band tag without going through the
+`release.yml` `update-deps-pr` flow.
 
 #### App private key compromised mid-release
 

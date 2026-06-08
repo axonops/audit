@@ -39,10 +39,24 @@ builds:
       - -s -w -X main.version={{.Version}}
 
 before:
-  hooks: []
-  # Before hooks removed — GoReleaser checks out the core tag commit,
-  # which has valid (though not latest-version) go.mod files. The build
-  # works because all referenced module versions are published.
+  hooks:
+    # PR-7 (#943) MAJOR-6 fix: invariant check enabled. Pre-v0.2.0,
+    # before-hooks were disabled because the tag commit's go.mod files
+    # didn't necessarily reference the just-being-released versions.
+    # v0.2.0+ runs the `update-deps-pr` job inside release.yml BEFORE
+    # tagging, so the tag commit reliably has every inter-module
+    # dependency pinned to {{ .Tag }}. Running the invariant check
+    # here aborts the build early (with a clear FAIL line per offending
+    # go.mod) if an out-of-band tag is pushed without going through
+    # the release flow, instead of producing a broken artifact set.
+    #
+    # GoReleaser exec's hooks via `/bin/sh -c`: keep substitutions
+    # whitespace-free. `{{ .Tag }}` (with the `v` prefix) is the
+    # required form — the Makefile target compares string-equality
+    # against `require` lines in every published go.mod, which all
+    # carry the `v` prefix per Go-module convention. `{{ .Version }}`
+    # (no prefix) would never match.
+    - make check-release-invariants VERSION={{ .Tag }}
 
 changelog:
   use: github

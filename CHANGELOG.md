@@ -9,11 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - **v0.2.2 cascade-prevention release-tool + harness + workflow
-  hardening (#918, #921, #923, #925, #927, #929).** Multi-PR effort
-  spanning the typed-Go release-tool binary, its bats harness, the
-  release.yml hardening pass that should have run before v0.2.1, and
-  the final workflow integration that retires the bash + jq + gh-CLI
-  helpers entirely.
+  hardening (#918, #921, #923, #925, #927, #929, #943).** Multi-PR
+  effort spanning the typed-Go release-tool binary, its bats
+  harness, the release.yml hardening pass that should have run
+  before v0.2.1, the final workflow integration that retires the
+  bash + jq + gh-CLI helpers entirely, and the goreleaser-side
+  concurrency + invariants fixes.
 
   **PR-4 — bats-core test harness for the surviving release
   shell scripts (#925).** Subprocess-driven test suite for
@@ -55,6 +56,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   tests in `tests/release-scripts/release-yml-grep.bats` lock each
   fix against future drift, and 1 named bats test in `tag-all.bats`
   locks the recovery-snippet contract.
+
+  **PR-7 — goreleaser concurrency gate + invariants before.hooks
+  (#943).** Closes the BLOCKER-7 + MAJOR-6 findings from the v0.2.1
+  devops audit. `.github/workflows/goreleaser.yml`'s manual-rerun
+  trigger now requires a `version` input matching the tag-format
+  regex, validates it at the first step, pins `actions/checkout`
+  `ref:` to `inputs.version` (not the dispatcher's branch), and
+  derives the concurrency group from `inputs.version` only — the
+  previous fallback to `github.ref_name` meant a manual rerun from
+  any branch ended up in a different group than the automated tag
+  flow, defeating the serialisation gate. `.goreleaser.yml` re-
+  enables `before.hooks` with `make check-release-invariants
+  VERSION={{ .Tag }}` so an out-of-band tag (one pushed without
+  going through `release.yml`'s `update-deps-pr` flow) aborts the
+  build early with a clear per-go.mod FAIL line instead of
+  producing a broken artifact set. Six named bats regression tests
+  in `tests/release-scripts/goreleaser-yml-grep.bats` lock each fix
+  against future drift.
 
   **PR-6 — `release-tool` workflow integration (#929).** Final piece
   of the cascade-prevention plan: `release.yml`'s `update-deps-pr`

@@ -139,6 +139,19 @@ signs:
       # forward-compatible.
       - sign-blob
       - '--yes'
+      # PR-9 (#949): cosign ≥ v2.6 made --new-bundle-format the
+      # default, which silently IGNORES --output-signature and
+      # --output-certificate (they print deprecation warnings) and
+      # writes a combined .bundle file at the path passed via
+      # --bundle. With no --bundle path supplied, cosign attempts
+      # `open ""` and fails with "create bundle file: open : no such
+      # file or directory". The v0.2.2 dispatch (run 27194413670)
+      # hit this. We keep the legacy split sig+cert layout — every
+      # consumer's `cosign verify-blob --signature checksums.txt.sig
+      # --certificate checksums.txt.pem` recipe in docs/releasing.md
+      # depends on those two files existing. --no-new-bundle-format
+      # restores cosign v2.5 behaviour.
+      - '--no-new-bundle-format'
       - '--output-certificate=${certificate}'
       - '--output-signature=${signature}'
       - '${artifact}'

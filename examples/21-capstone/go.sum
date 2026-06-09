@@ -1,7 +1,5 @@
 github.com/DATA-DOG/go-sqlmock v1.5.2 h1:OcvFkGmslmlZibjAjaHm3L//6LiuBgolP7OputlJIzU=
 github.com/DATA-DOG/go-sqlmock v1.5.2/go.mod h1:88MAG/4G7SMwSE3CeA0ZKzrT5CiOU3OJ+JlNzwDqpNU=
-github.com/axonops/audit/secrets/vault v0.1.11 h1:qfQxaslNpfucZQpUm6eZDR3gQwJIB04UyMrVckVEJPA=
-github.com/axonops/audit/secrets/vault v0.1.11/go.mod h1:gN0O2z8/gLSc7OTsBIXBcbS9bhL7Bn7QL324aoBFz7A=
 github.com/axonops/audit/syslog v0.1.11 h1:BZIREZNbxhrJYHEUO8JY/+JrEJ21YRSMC1ITeQX534c=
 github.com/axonops/audit/syslog v0.1.11/go.mod h1:frtAgiAsByHoIRe04emWBBjmkKp38EwM1sWXMEuLA0w=
 github.com/axonops/srslog v1.0.1 h1:TucvspQNxwL18w3xo9r3p+ulxJ5ltR8S9DalDTYDfA4=

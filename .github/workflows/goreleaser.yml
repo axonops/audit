@@ -101,6 +101,22 @@ jobs:
       - name: Set up go.work
         run: make workspace
 
+      # PR-12 (#952) fix: the v0.2.2 5th dispatch (27216652832) failed
+      # at the docker push step with "unauthorized: unauthenticated:
+      # User cannot be authenticated with the token provided".
+      # GoReleaser's `dockers:` push needs the runner's local docker
+      # CLI to be logged into ghcr.io BEFORE goreleaser runs — there
+      # is no docker-login surface inside goreleaser-action's config.
+      # docker/login-action is the standard pattern. Uses
+      # ${{ github.actor }} + the auto-provisioned GITHUB_TOKEN
+      # scoped via the workflow's `packages: write` permission.
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       # Sigstore keyless signing (#516). Installs cosign for the
       # GoReleaser `signs:` stanza. Pinned to v4.1.1 commit SHA.
       #

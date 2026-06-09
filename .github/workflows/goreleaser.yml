@@ -148,6 +148,25 @@ jobs:
           args: release --clean --skip=validate --skip=before
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # PR-11 (#951): GoReleaser's `{{ .Tag }}` and `{{ .Version }}`
+          # templates resolve via `git describe --tags`, which prefers
+          # ANNOTATED tags over lightweight ones. v0.2.2 was pushed as
+          # lightweight (release-tool flow timed out at wait-for-pr-
+          # merge, tag had to be created manually via REST), then
+          # tag-all created annotated `file/v0.2.2`, ...,
+          # `webhook/v0.2.2`. git describe picks the lexicographically
+          # last annotated one (`webhook/v0.2.2`) — `{{ .Version }}`
+          # becomes `webhook/v0.2.2`, and docker image-template builds
+          # like `ghcr.io/axonops/audit-gen:{{ .Version }}-amd64`
+          # produce `ghcr.io/...:webhook/v0.2.2-amd64`, an invalid
+          # docker reference (slash in the tag).
+          #
+          # GORELEASER_CURRENT_TAG is goreleaser's documented escape
+          # hatch — overrides the auto-detection. Set it to the
+          # workflow_dispatch `version` input so .Tag / .Version
+          # resolve to v0.2.2 / 0.2.2 regardless of what
+          # `git describe` would pick.
+          GORELEASER_CURRENT_TAG: ${{ inputs.version }}
 
       - name: Attest release artifacts
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0

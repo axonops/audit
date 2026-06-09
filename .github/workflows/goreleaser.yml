@@ -103,8 +103,24 @@ jobs:
 
       # Sigstore keyless signing (#516). Installs cosign for the
       # GoReleaser `signs:` stanza. Pinned to v4.1.1 commit SHA.
+      #
+      # PR-10 (#950) fix: cosign-installer's default is "latest", which
+      # currently pulls cosign ≥ v2.6. That release made
+      # --new-bundle-format the silent default — --output-signature
+      # and --output-certificate are warned-and-ignored, and cosign
+      # tries to write a combined .bundle to the path passed via
+      # --bundle (which we don't pass), so it fails with
+      # "create bundle file: open : no such file or directory".
+      # The v0.2.2 dispatch (runs 27194413670 + 27196997175) failed
+      # exactly here. Pin to v2.5.3 — the last v2.5 release — so
+      # --output-signature / --output-certificate continue to write
+      # the .sig / .pem layout that docs/releasing.md's verifier
+      # recipe depends on. v0.2.3 will migrate to the bundle format
+      # + update the verifier docs as a proper fix.
       - name: Install cosign
         uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+        with:
+          cosign-release: 'v2.5.3'
 
       - name: Run GoReleaser
         id: goreleaser

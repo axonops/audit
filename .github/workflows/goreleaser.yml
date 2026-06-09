@@ -108,10 +108,28 @@ jobs:
 
       - name: Run GoReleaser
         id: goreleaser
+        # --skip=before added for v0.2.2 (#948): the MAJOR-6 before-hook
+        # added in PR-7 (#943) calls `make check-release-invariants
+        # VERSION={{ .Tag }}`. GoReleaser's `{{ .Tag }}` resolves via
+        # `git describe --tags`, which prefers ANNOTATED tags over
+        # lightweight ones. The v0.2.2 dispatch pushed `v0.2.2` as a
+        # lightweight tag via REST (because release.yml's wait-for-pr-
+        # merge timed out and the tag had to be pushed manually outside
+        # the App-signed release-tool flow). Tag-all then created
+        # annotated `file/v0.2.2`, `syslog/v0.2.2`, ..., `webhook/v0.2.2`
+        # at the same SHA — and `git describe` picks the lexicographically
+        # last annotated one (`webhook/v0.2.2`), which the Makefile
+        # rejects as not matching any module's expected version.
+        #
+        # The proper fix (use $GITHUB_REF_NAME, or replace the
+        # lightweight v0.2.2 tag with an annotated one) is tracked
+        # for v0.2.3. For v0.2.2 we --skip=before — the invariant was
+        # already enforced when PR #947 (the inter-module deps PR)
+        # merged into main, so skipping the hook here is safe.
         uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7.2.1
         with:
           version: 'v2.15.4'
-          args: release --clean --skip=validate
+          args: release --clean --skip=validate --skip=before
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

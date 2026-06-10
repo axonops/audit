@@ -34,6 +34,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   same regression that broke v0.2.2's 5th manual dispatch and was
   fixed in `goreleaser.yml` under #950. Pinned to `v2.5.3` to keep
   the `.sig` / `.pem` layout consumers' verifier recipe depends on.
+- **`regen-schema-artifacts-check` + `ta-diff-check` release-PR
+  head-ref carve-out (#957).** Both Makefile targets shell out to
+  `go run ./cmd/audit-gen`, which has to resolve every published
+  sub-module from `go.mod`. On a release PR the cross-module pins
+  point at yet-to-be-tagged versions (`tag-all` runs after PR
+  merge), causing the targets to fail with
+  `unknown revision splunk/vX.Y.Z` and blocking the release PR
+  without admin-bypass. v0.2.2 had to be admin-merged with required-
+  check bypass for exactly this reason — the first crack that
+  triggered the lightweight-tag downstream cascade. The targets now
+  detect `GITHUB_HEAD_REF` matching `release/v<semver>` and skip
+  with a logged reason; non-release PRs still run the full check.
+  Mirrors the existing tidy-check release-PR carve-out described in
+  `docs/releasing.md` § "Unified single-tag release flow". Tested by
+  `tests/release-scripts/check-static-release-pr-tolerant.bats`
+  (12 named tests). v0.2.3's release PR can auto-merge without
+  admin bypass.
 
 ## [0.2.2] - 2026-06-08
 

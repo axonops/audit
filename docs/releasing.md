@@ -1159,6 +1159,43 @@ guards (`fmt-check`, `tidy-check`, `check-todos`, `check-replace`,
 surfaces on a single push rather than aborting on the first. Developers
 running `make check-static` locally see the same one-shot summary.
 
+### Release-PR carve-outs in `check-static` (#957)
+
+Two `check-static` targets — `regen-schema-artifacts-check` and
+`ta-diff-check` — shell out to `go run ./cmd/audit-gen`, which has
+to resolve every published sub-module from `go.mod`. On a release
+PR, the `update-deps.sh` step pins every cross-module `go.mod` to
+the not-yet-tagged target version (`tag-all` runs AFTER the PR
+merges), so the resolution fails with
+`unknown revision splunk/vX.Y.Z` and CI cannot pass without
+admin-bypass.
+
+Both targets carve out the release-PR head ref via the
+`GITHUB_HEAD_REF` env var: if the value matches
+`release/v<semver>`, the target prints a `skipping on release PR
+head ref ...` line and exits 0. Outside that match — including
+when the variable is unset (local development, push events,
+workflow_dispatch on a non-PR ref) — the targets run the full
+check. The neighbouring `SKIP_TIDY_CHECK=1` carve-out described
+above uses the same pattern. The carve-outs are tested by
+[`tests/release-scripts/check-static-release-pr-tolerant.bats`][bats-carve-out];
+removing them MUST be paired with restoring the upstream blocker
+they paper over.
+
+The release-PR carve-out is structurally safe: neither artefact's
+input depends on the cross-module `go.mod` pins. The framework
+schema + CEF template are produced from
+`internal/schemagen/framework_only_taxonomy.yaml` + audit-gen
+output; the reference TA is produced from
+`internal/schemagen/reference_ta_taxonomy.yaml` + audit-gen
+output. Neither input is mutated by a release PR, so a stale
+artefact cannot land via the release path. The post-merge
+`invariants` job in [`release.yml`][release-yml] re-runs the same
+`check-static` against the tagged commit, which is the
+authoritative gate.
+
+[bats-carve-out]: ../tests/release-scripts/check-static-release-pr-tolerant.bats
+
 The CI setup ceremony (Go install, workspace init, optional tool
 install) lives in `.github/actions/setup-audit/` as a composite
 action — every job consumes it via `uses: ./.github/actions/setup-audit`.

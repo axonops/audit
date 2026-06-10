@@ -285,3 +285,43 @@ setup() {
     grep -qF 'cache-dependency-path: cmd/release-tool/go.sum' "$ACTION"
     grep -qF 'go-version-file: cmd/release-tool/go.mod' "$ACTION"
 }
+
+# --- #956 — goreleaser/verify/invariants run on push:tag recovery ---
+
+@test "test_release_yml_goreleaser_uses_if_always" {
+    # #956 fix: without `always() && needs.X.result == 'success' && ...`
+    # the implicit "all needs must succeed" gate treats the *skipped*
+    # workflow_dispatch-only upstreams as not-yet-success on the
+    # push:tag path, so goreleaser silently skips. v0.2.2's push:tag
+    # run 27181087721 hit exactly this. Verify the goreleaser job's
+    # body contains `always() &&` and gates on preflight + tag-all.
+    body=$(awk '/^  goreleaser:/,/^  verify:/' "$RELEASE_YML")
+    echo "$body" | grep -qF 'always() &&'
+    echo "$body" | grep -qF "needs.preflight.result == 'success'"
+    echo "$body" | grep -qF "needs.tag-all.result == 'success'"
+}
+
+@test "test_release_yml_verify_uses_if_always" {
+    # Same rationale as goreleaser above (#956). The verify job
+    # gates on goreleaser succeeding; without `always() && ...` it
+    # cascade-skipped on the push:tag path.
+    body=$(awk '/^  verify:/,/^  invariants:/' "$RELEASE_YML")
+    echo "$body" | grep -qF 'always() &&'
+    echo "$body" | grep -qF "needs.preflight.result == 'success'"
+    echo "$body" | grep -qF "needs.goreleaser.result == 'success'"
+}
+
+@test "test_release_yml_invariants_uses_if_always" {
+    # The post-release sanity gate (#956). Must run on every
+    # successful end-to-end release, including push:tag recovery.
+    # Extract from `invariants:` to the next top-level job header
+    # (a line starting with two spaces then `[a-z]`-prefixed name).
+    body=$(awk '/^  invariants:/{p=1} p; p && NR > FNR{}' "$RELEASE_YML")
+    # If the file ends before another job appears, the awk slurp is
+    # bounded by EOF — which is fine here since invariants is the
+    # last job in the workflow.
+    echo "$body" | grep -qF 'always() &&'
+    echo "$body" | grep -qF "needs.preflight.result == 'success'"
+    echo "$body" | grep -qF "needs.tag-all.result == 'success'"
+    echo "$body" | grep -qF "needs.verify.result == 'success'"
+}

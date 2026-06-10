@@ -51,6 +51,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `tests/release-scripts/check-static-release-pr-tolerant.bats`
   (12 named tests). v0.2.3's release PR can auto-merge without
   admin bypass.
+- **`push: tags: v*` recovery path is now self-contained (#956).** The
+  `goreleaser`, `verify`, and `invariants` jobs in
+  `.github/workflows/release.yml` now carry explicit
+  `if: always() && needs.X.result == 'success' && ...` gates over
+  their direct upstreams. Previously, the implicit "all needs must
+  succeed" gate treated the (legitimately skipped) workflow_dispatch-
+  only `update-deps-pr` + `wait-for-pr-merge` jobs as not-yet-success
+  on the push:tag path, causing the entire downstream chain to silently
+  skip. v0.2.2's push:tag run 27181087721 hit exactly this — recovery
+  created the tags but left the GitHub Release page empty until the
+  `goreleaser.yml` manual rerun was dispatched. Tested by three new
+  `tests/release-scripts/release-yml-grep.bats` assertions
+  (`test_release_yml_goreleaser_uses_if_always`,
+  `..._verify_uses_if_always`, `..._invariants_uses_if_always`).
 
 ## [0.2.2] - 2026-06-08
 

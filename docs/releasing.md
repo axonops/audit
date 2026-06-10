@@ -553,6 +553,17 @@ The two triggers serve different purposes:
   the same SHA, aborting on SHA mismatch), and runs GoReleaser. It does
   NOT open a release PR. See "Release recovery playbook" below.
 
+  **Self-contained since #956.** Before #956, the push:tag path reached
+  `tag-all` successfully but the downstream `goreleaser`, `verify`, and
+  `invariants` jobs silently skipped because their implicit "all needs
+  must succeed" gate treated the (legitimately skipped) `update-deps-pr`
+  + `wait-for-pr-merge` jobs as not-yet-success. v0.2.2's push:tag run
+  27181087721 hit exactly this — recovery created the tags but left the
+  GitHub Release page empty until the `goreleaser.yml` manual rerun was
+  dispatched. The three downstream jobs now carry explicit
+  `if: always() && needs.X.result == 'success' && ...` gates over their
+  direct upstreams, so push:tag is a real recovery path.
+
 The `release.yml` workflow uses the `axonops-audit-release-bot` GitHub App for
 every write operation; it does not consume a personal access token.
 

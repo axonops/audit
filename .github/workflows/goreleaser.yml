@@ -161,7 +161,17 @@ jobs:
         uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7.2.1
         with:
           version: 'v2.15.4'
-          args: release --clean --skip=validate --skip=before
+          # --skip=docker --skip=docker-manifests skips the docker
+          # image build + push for v0.2.2. The audit-gen container
+          # image isn't needed (consumers `go install` the binary),
+          # and shipping it blocked v0.2.2 on a GHCR org-package-
+          # creation permission chase. #953 tracks removing the
+          # docker stanzas from .goreleaser.yml entirely; this flag
+          # is the in-place workaround until that PR lands. The
+          # cosign signs: stanza for checksums.txt is NOT skipped —
+          # consumers' verifier recipe in docs/releasing.md still
+          # needs the .sig + .pem files.
+          args: release --clean --skip=validate --skip=before --skip=docker --skip=docker-manifests
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # PR-11 (#951): GoReleaser's `{{ .Tag }}` and `{{ .Version }}`

@@ -315,13 +315,43 @@ setup() {
     # The post-release sanity gate (#956). Must run on every
     # successful end-to-end release, including push:tag recovery.
     # Extract from `invariants:` to the next top-level job header
-    # (a line starting with two spaces then `[a-z]`-prefixed name).
-    body=$(awk '/^  invariants:/{p=1} p; p && NR > FNR{}' "$RELEASE_YML")
-    # If the file ends before another job appears, the awk slurp is
-    # bounded by EOF — which is fine here since invariants is the
-    # last job in the workflow.
+    # (`post-release-tidy:` since #959 inserted the new job between
+    # invariants and summary).
+    body=$(awk '/^  invariants:/,/^  post-release-tidy:/' "$RELEASE_YML")
     echo "$body" | grep -qF 'always() &&'
     echo "$body" | grep -qF "needs.preflight.result == 'success'"
     echo "$body" | grep -qF "needs.tag-all.result == 'success'"
     echo "$body" | grep -qF "needs.verify.result == 'success'"
+}
+
+# --- #959 — post-release auto-tidy ---
+
+@test "test_release_yml_post_release_tidy_step_exists" {
+    # #959: after tag-all publishes the v* tags, every sub-module's
+    # go.sum gains entries for the just-published version. Without
+    # an auto-tidy step, main's Hygiene tidy-check fails IMMEDIATELY
+    # post-release and every fix PR has to be admin-merged. The job
+    # runs `make tidy` against main, App-signs the diff via
+    # release-tool commit-pinned-deps, and opens an auto-merge PR.
+    body=$(awk '/^  post-release-tidy:/,/^  summary:/' "$RELEASE_YML")
+    # Job name is the documented anchor for #959.
+    echo "$body" | grep -qF 'post-release-tidy:'
+    # The job must run `make tidy` (the actual fix step).
+    echo "$body" | grep -qF 'run: make tidy'
+    # No-diff path is a clean exit, not a failure.
+    echo "$body" | grep -qF 'no post-release drift to absorb'
+    # Uses the existing release-tool commit-pinned-deps subcommand —
+    # its allowlist already covers go.mod + go.sum, which is exactly
+    # the post-tidy diff surface.
+    echo "$body" | grep -qF 'commit-pinned-deps'
+    # Branch name pattern (#959 documented anchor).
+    echo "$body" | grep -qF 'chore/post-release-tidy-'
+    # #956 pattern — explicit always() gate so push:tag also runs
+    # this job.
+    echo "$body" | grep -qF 'always() &&'
+    echo "$body" | grep -qF "needs.invariants.result == 'success'"
+    # Summary table must list the new job's result.
+    grep -qF 'needs.post-release-tidy.result' "$RELEASE_YML"
+    # Summary `needs:` list must include post-release-tidy.
+    awk '/^  summary:/,/^[^[:space:]]/' "$RELEASE_YML" | grep -qE '^[[:space:]]+- post-release-tidy$'
 }

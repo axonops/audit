@@ -106,6 +106,27 @@ contributor-facing view of this invariant is documented in
 [release-yml]: ../.github/workflows/release.yml
 [update-deps-sh]: ../scripts/release/update-deps.sh
 
+### Post-release auto-tidy (#959)
+
+After `tag-all` publishes the v* tags, every sub-module's go.sum
+gains entries that did not exist before — `proxy.golang.org` can
+now resolve `github.com/axonops/audit vX.Y.Z` (which the
+release-prep PR's go.mod files pinned) and `go mod tidy` will
+write the corresponding checksum lines. Without intervention,
+main's Hygiene `tidy-check` job fails IMMEDIATELY post-release and
+every fix PR has to be admin-merged until a maintainer hand-tidies
+and pushes a commit. v0.2.2 was the case study: PRs #948–#955 all
+failed Hygiene's tidy-check on a post-release main.
+
+The `post-release-tidy` job in `release.yml` runs `make tidy` on
+main after `invariants` passes, App-signs the diff via the same
+`release-tool commit-pinned-deps` path the release-prep PR uses
+(the existing allowlist covers `go.mod` + `go.sum`, which is
+exactly the post-tidy diff surface), and opens an auto-merge PR
+titled `chore: post-release go.sum refresh (vX.Y.Z)`. If `make
+tidy` produces no diff (e.g. a release that only bumps an
+already-published module), the job exits 0 with a log.
+
 ### v0.x Stability Contract
 
 This library is pre-release (`v0.x`). The Go module system treats v0 the same

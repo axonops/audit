@@ -109,6 +109,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `test_goreleaser_signs_uses_bundle_format`,
   `test_releasing_docs_uses_bundle_verifier_recipe`) pin the
   collapse against future regression.
+- **Post-release auto-tidy job (#959).** After `tag-all` publishes
+  the v* tags, every sub-module's `go.sum` gains entries for the
+  just-published version (the proxy now resolves them). Without
+  intervention, main's Hygiene `tidy-check` fails immediately
+  post-release and every fix PR must be admin-merged until a
+  maintainer hand-tidies and pushes a commit. v0.2.2 illustrated
+  the failure mode end-to-end — PRs #948-#955 all failed Hygiene's
+  tidy-check on a post-release main. A new `post-release-tidy` job
+  in `release.yml` runs `make tidy` after `invariants`, App-signs
+  any diff via `release-tool commit-pinned-deps` (the existing
+  allowlist already covers go.mod + go.sum), and opens an
+  auto-merge PR titled `chore: post-release go.sum refresh
+  (vX.Y.Z)`. No-diff case exits cleanly. Tested by the new
+  `tests/release-scripts/release-yml-grep.bats`
+  `test_release_yml_post_release_tidy_step_exists` assertion.
 
 ## [0.2.2] - 2026-06-08
 

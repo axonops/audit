@@ -60,16 +60,6 @@ Pre-built binaries for `linux/{amd64,arm64}`, `darwin/{amd64,arm64}`,
 and `windows/amd64` are attached to every release tag at
 <https://github.com/axonops/audit/releases>.
 
-An OCI image is published to GitHub Container Registry on every
-release (multi-arch manifest: amd64 + arm64):
-
-```bash
-docker run --rm -v "$PWD:/src" ghcr.io/axonops/audit-gen:latest \
-    -input /src/taxonomy.yaml \
-    -output /src/audit_generated.go \
-    -package mypackage
-```
-
 Requires Go 1.26+ when installing from source.
 
 ## Usage

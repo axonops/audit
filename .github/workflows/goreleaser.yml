@@ -101,22 +101,6 @@ jobs:
       - name: Set up go.work
         run: make workspace
 
-      # PR-12 (#952) fix: the v0.2.2 5th dispatch (27216652832) failed
-      # at the docker push step with "unauthorized: unauthenticated:
-      # User cannot be authenticated with the token provided".
-      # GoReleaser's `dockers:` push needs the runner's local docker
-      # CLI to be logged into ghcr.io BEFORE goreleaser runs — there
-      # is no docker-login surface inside goreleaser-action's config.
-      # docker/login-action is the standard pattern. Uses
-      # ${{ github.actor }} + the auto-provisioned GITHUB_TOKEN
-      # scoped via the workflow's `packages: write` permission.
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       # Sigstore keyless signing (#516). Installs cosign for the
       # GoReleaser `signs:` stanza. Pinned to v4.1.1 commit SHA.
       #
@@ -161,37 +145,33 @@ jobs:
         uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7.2.1
         with:
           version: 'v2.15.4'
-          # --skip=docker --skip=docker-manifests skips the docker
-          # image build + push for v0.2.2. The audit-gen container
-          # image isn't needed (consumers `go install` the binary),
-          # and shipping it blocked v0.2.2 on a GHCR org-package-
-          # creation permission chase. #953 tracks removing the
-          # docker stanzas from .goreleaser.yml entirely; this flag
-          # is the in-place workaround until that PR lands. The
-          # cosign signs: stanza for checksums.txt is NOT skipped —
-          # consumers' verifier recipe in docs/releasing.md still
-          # needs the .sig + .pem files.
-          args: release --clean --skip=validate --skip=before --skip=docker
+          # --skip=validate matches the historical release flow; --skip=before
+          # bypasses the make check-release-invariants pre-flight because the
+          # invariant was already enforced when the inter-module deps PR merged
+          # to main. The cosign signs: stanza for checksums.txt is NOT skipped —
+          # consumers' verifier recipe in docs/releasing.md depends on the .sig
+          # + .pem files. Docker stanzas were removed in #953; no --skip=docker
+          # flag needed.
+          args: release --clean --skip=validate --skip=before
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # PR-11 (#951): GoReleaser's `{{ .Tag }}` and `{{ .Version }}`
           # templates resolve via `git describe --tags`, which prefers
-          # ANNOTATED tags over lightweight ones. v0.2.2 was pushed as
-          # lightweight (release-tool flow timed out at wait-for-pr-
-          # merge, tag had to be created manually via REST), then
-          # tag-all created annotated `file/v0.2.2`, ...,
-          # `webhook/v0.2.2`. git describe picks the lexicographically
-          # last annotated one (`webhook/v0.2.2`) — `{{ .Version }}`
-          # becomes `webhook/v0.2.2`, and docker image-template builds
-          # like `ghcr.io/axonops/audit-gen:{{ .Version }}-amd64`
-          # produce `ghcr.io/...:webhook/v0.2.2-amd64`, an invalid
-          # docker reference (slash in the tag).
+          # ANNOTATED tags over lightweight ones. When the release-tool
+          # flow times out at wait-for-pr-merge and the version tag is
+          # pushed manually as lightweight, tag-all then creates annotated
+          # `file/vX.Y.Z`, ..., `webhook/vX.Y.Z` at the same SHA — and
+          # `git describe` picks the lexicographically last annotated one
+          # (`webhook/vX.Y.Z`), making `{{ .Version }}` resolve to
+          # `webhook/vX.Y.Z` (slash in the template output). The release
+          # checksum filename + the GitHub release name end up malformed.
           #
           # GORELEASER_CURRENT_TAG is goreleaser's documented escape
           # hatch — overrides the auto-detection. Set it to the
           # workflow_dispatch `version` input so .Tag / .Version
-          # resolve to v0.2.2 / 0.2.2 regardless of what
-          # `git describe` would pick.
+          # resolve to the dispatched value regardless of what
+          # `git describe` would pick. #958 tracks collapsing this
+          # bandage stack into a single fix.
           GORELEASER_CURRENT_TAG: ${{ inputs.version }}
 
       - name: Attest release artifacts

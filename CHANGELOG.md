@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Removed
+
+- **`ghcr.io/axonops/audit-gen` OCI image publishing (#953).** The
+  multi-arch container image added in #610 is no longer published.
+  `audit-gen` is a developer-facing CLI tool whose canonical
+  install path is the Go module proxy
+  (`go install github.com/axonops/audit/cmd/audit-gen@vX.Y.Z`) or
+  the per-release binary tarball at
+  <https://github.com/axonops/audit/releases>. Shipping a docker
+  image added a recurring release tax (login step, cosign-installer
+  flag drift, `.Tag` template ambiguity vs annotated tags, GHCR
+  org-package permission chase) and was not pulling its weight —
+  the v0.2.2 dispatch was blocked across attempts 5–7 on it. The
+  `dockers:` / `docker_manifests:` / `docker_signs:` stanzas, the
+  `cmd/audit-gen/Dockerfile`, and the workflow docker-login + buildx
+  + qemu steps are all removed. The release tarball + checksum +
+  cosign signature + build-provenance attestation paths are
+  unchanged.
+
+### Fixed
+
+- **`release.yml` cosign binary pin (#953).** The automated tag
+  flow's `sigstore/cosign-installer` step was previously unpinned
+  and defaulted to `cosign latest`, which now resolves to v2.6+
+  with `--new-bundle-format` as the silent default. This is the
+  same regression that broke v0.2.2's 5th manual dispatch and was
+  fixed in `goreleaser.yml` under #950. Pinned to `v2.5.3` to keep
+  the `.sig` / `.pem` layout consumers' verifier recipe depends on.
+
 ## [0.2.2] - 2026-06-08
 
 ### Added

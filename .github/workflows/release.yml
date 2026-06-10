@@ -842,7 +842,6 @@ jobs:
       contents: write
       id-token: write
       attestations: write
-      packages: write   # ghcr.io/axonops/audit-gen — #610
     steps:
       - name: Checkout release tag
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -902,26 +901,15 @@ jobs:
       # Sigstore keyless signing (#516). Installs the cosign binary
       # so the GoReleaser `signs:` stanza can call `cosign sign-blob`
       # against the GHA OIDC token (id-token: write above) for
-      # keyless certificate issuance from Fulcio. Pinned to the v4.1.1
-      # commit SHA per repository action-pin policy.
+      # keyless certificate issuance from Fulcio. Pinned to v2.5.3
+      # (same as goreleaser.yml manual-rerun) to keep the .sig/.pem
+      # layout consumers' verifier recipe depends on; cosign v2.6
+      # switches to --new-bundle-format silently. Action itself is
+      # SHA-pinned per repository action-pin policy.
       - name: Install cosign
         uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
-
-      # Multi-arch OCI image build for ghcr.io/axonops/audit-gen (#610).
-      # Buildx + QEMU enable cross-platform builds (amd64 + arm64) on
-      # the GitHub-hosted ubuntu runner. The login uses GITHUB_TOKEN
-      # against ghcr.io — no separate registry token required because
-      # the goreleaser job has packages:write permission above.
-      - name: Set up QEMU (multi-arch emulation)
-        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
-      - name: Log in to ghcr.io
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          cosign-release: 'v2.5.3'
 
       # MINOR-3 fix (#927): pin the GoReleaser binary version
       # explicitly to v2.15.4. The Action itself is SHA-pinned

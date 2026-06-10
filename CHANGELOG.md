@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Cosign signature artefact is now a single bundle file (#958).**
+  The release signature recipe migrates from the split
+  `checksums.txt.sig` + `checksums.txt.pem` layout to the cosign
+  v2.6 bundle format (`checksums.txt.bundle`). The new verifier
+  recipe is:
+
+  ```bash
+  cosign verify-blob \
+    --bundle checksums.txt.bundle \
+    --certificate-identity-regexp '^https://github\.com/axonops/audit/\.github/workflows/release\.yml@refs/tags/v.+$' \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+    --certificate-github-workflow-repository axonops/audit \
+    checksums.txt
+  ```
+
+  Requires cosign v2.6+ (the bundle-format flag is the v2.6
+  default). Consumers using cosign v2.5 must upgrade. The
+  `goreleaser.yml` manual-rerun workflow's cosign-installer pin
+  (introduced by #950, mirrored on `release.yml` in #953) is
+  removed in the same change. `docs/releasing.md` "Verify a
+  Release with Cosign" rewrites the recipe end-to-end.
+
 ### Removed
 
 - **`ghcr.io/axonops/audit-gen` OCI image publishing (#953).** The
@@ -33,7 +57,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   with `--new-bundle-format` as the silent default. This is the
   same regression that broke v0.2.2's 5th manual dispatch and was
   fixed in `goreleaser.yml` under #950. Pinned to `v2.5.3` to keep
-  the `.sig` / `.pem` layout consumers' verifier recipe depends on.
+  the `.sig` / `.pem` layout consumers' verifier recipe depended
+  on at the time of #953; subsequently removed in #958 when the
+  signs: stanza migrated to the cosign v2.6 bundle format.
 - **`regen-schema-artifacts-check` + `ta-diff-check` release-PR
   head-ref carve-out (#957).** Both Makefile targets shell out to
   `go run ./cmd/audit-gen`, which has to resolve every published
@@ -65,6 +91,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `tests/release-scripts/release-yml-grep.bats` assertions
   (`test_release_yml_goreleaser_uses_if_always`,
   `..._verify_uses_if_always`, `..._invariants_uses_if_always`).
+- **Goreleaser tag-detection bandage stack collapsed (#958).**
+  Three workarounds were stacked on `goreleaser.yml` during v0.2.2's
+  push:tag rescue: a `--skip=before` flag bypassing
+  `make check-release-invariants` (#948), a cosign-installer
+  v2.5.3 pin (#950), and the `--no-new-bundle-format` flag on
+  cosign sign-blob (#949). The structural fix —
+  `GORELEASER_CURRENT_TAG: ${{ inputs.version }}` (#951) —
+  already addresses the root cause (goreleaser's `{{ .Tag }}` /
+  `{{ .Version }}` no longer try to resolve via `git describe`
+  and so cannot pick the wrong annotated tag). The other three
+  workarounds are now removed and the cosign signs: stanza is
+  migrated to the v2.6 bundle format described above. Three new
+  `tests/release-scripts/goreleaser-yml-grep.bats` assertions
+  (`test_goreleaser_no_skip_before`,
+  `test_goreleaser_no_cosign_release_pin`,
+  `test_goreleaser_signs_uses_bundle_format`,
+  `test_releasing_docs_uses_bundle_verifier_recipe`) pin the
+  collapse against future regression.
 
 ## [0.2.2] - 2026-06-08
 

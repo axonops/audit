@@ -171,7 +171,7 @@ jobs:
           # cosign signs: stanza for checksums.txt is NOT skipped —
           # consumers' verifier recipe in docs/releasing.md still
           # needs the .sig + .pem files.
-          args: release --clean --skip=validate --skip=before --skip=docker --skip=docker-manifests
+          args: release --clean --skip=validate --skip=before --skip=docker
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # PR-11 (#951): GoReleaser's `{{ .Tag }}` and `{{ .Version }}`

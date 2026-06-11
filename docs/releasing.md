@@ -588,7 +588,7 @@ run — and run-1 is v0.2.3 itself, which couldn't reach tag-all.
 
 | # | Gate | Failure exit string |
 |---|------|---------------------|
-| 1 | Diff is go.sum-only (no go.mod changes) | `preflight-tidy: go.mod modified — aborting` |
+| 1 | go.mod changes are classified — indirect-only adjustments pass; direct require changes or directive (`module`/`go`/`toolchain`/`replace`) changes reject (#973) | `preflight-tidy: go.mod direct require modified — aborting` / `preflight-tidy: go.mod module/go/toolchain/replace directive modified — aborting` |
 | 2 | Additions only (no deletions) | `preflight-tidy: go.sum lines deleted — aborting` |
 | 3 | Lines reference published modules at the last-released version only | `preflight-tidy: unrelated checksum lines — aborting` |
 | 4 | sum.golang.org transparency-log cross-check on every (module, version) | `preflight-tidy: sum.golang.org disagrees — aborting` (mismatch) / `preflight-tidy: sum.golang.org timeout or 5xx — aborting` (transient) |

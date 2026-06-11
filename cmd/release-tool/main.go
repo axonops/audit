@@ -57,9 +57,8 @@ import (
 // version is overridden at build time via -ldflags.
 var version = "dev"
 
-// Exit codes. All are referenced in the help text; PR-3 subcommands
-// will start returning the validation / idempotent codes once they
-// land.
+// Exit codes. All are referenced in the help text and returned by
+// the subcommands below.
 const (
 	exitSuccess        = 0
 	exitOperational    = 1

@@ -838,6 +838,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [preflight, tag-all]
+    # #956 fix: without `always() && ...`, the implicit `all needs
+    # must succeed` gate treats the *skipped* update-deps-pr +
+    # wait-for-pr-merge jobs (push:tag path) as not-yet-success, so
+    # the whole downstream chain silently skips. v0.2.2's push:tag
+    # run 27181087721 hit exactly this — preflight succeeded,
+    # tag-all succeeded, but goreleaser / verify / invariants all
+    # skipped, leaving the release page empty until the goreleaser.yml
+    # manual rerun was dispatched. Explicit gate: run when this job's
+    # direct upstreams both passed, regardless of branches that were
+    # legitimately skipped for the chosen event_name.
+    if: |
+      always() &&
+      needs.preflight.result == 'success' &&
+      needs.tag-all.result == 'success'
     permissions:
       contents: write
       id-token: write
@@ -995,6 +1009,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [preflight, goreleaser]
+    # #956 fix: same rationale as goreleaser above. The implicit
+    # all-needs-succeed gate would silently skip this job on the
+    # push:tag path because the upstream workflow_dispatch-only
+    # jobs are skipped. Explicit gate keeps the recovery path
+    # self-contained.
+    if: |
+      always() &&
+      needs.preflight.result == 'success' &&
+      needs.goreleaser.result == 'success'
     permissions:
       contents: read
     env:
@@ -1106,6 +1129,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: [preflight, tag-all, verify]
+    # #956 fix: same rationale as goreleaser/verify above. The
+    # final sanity check must run on every successful end-to-end
+    # release, not only when the workflow_dispatch upstreams ran.
+    if: |
+      always() &&
+      needs.preflight.result == 'success' &&
+      needs.tag-all.result == 'success' &&
+      needs.verify.result == 'success'
     permissions:
       contents: read
     steps:

@@ -444,7 +444,7 @@ setup() {
     grep -qF 'preflight-tidy: sum.golang.org disagrees — aborting' "$SUBCMD"
     grep -qF 'preflight-tidy: sum.golang.org timeout or 5xx — aborting' "$SUBCMD"
     # Diff-size-cap defence-in-depth string (test-analyst review).
-    grep -qF 'preflight-tidy: diff exceeds 8 KiB cap — aborting' "$SUBCMD"
+    grep -qF 'preflight-tidy: diff exceeds size cap — aborting' "$SUBCMD"
     # Strings the WORKFLOW emits (PR + skip paths).
     grep -qF 'preflight-tidy: PR opened' "$RELEASE_YML"
     grep -qF 'preflight-tidy: PR auto-merge refused — aborting' "$RELEASE_YML"

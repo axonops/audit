@@ -53,7 +53,7 @@ const (
 	msgUnrelatedChecksums  = "preflight-tidy: unrelated checksum lines — aborting"
 	msgSumdbDisagrees      = "preflight-tidy: sum.golang.org disagrees — aborting"
 	msgSumdbTransient      = "preflight-tidy: sum.golang.org timeout or 5xx — aborting"
-	msgDiffSizeCapExceeded = "preflight-tidy: diff exceeds 8 KiB cap — aborting"
+	msgDiffSizeCapExceeded = "preflight-tidy: diff exceeds size cap — aborting"
 )
 
 // runPreflightTidyCheck implements the `preflight-tidy-check`
@@ -82,7 +82,12 @@ func runPreflightTidyCheck(ctx context.Context, args []string, stdout, stderr io
 		"Last released version, e.g. v0.2.2 — gates 3+4 root their checks here (required)")
 	fs.StringVar(&in.publishedModulesCSV, "published-modules", "",
 		"Comma-separated list of github.com/axonops/audit/<sub> module paths to expect in the diff (required)")
-	fs.Int64Var(&in.maxDiffBytes, "max-diff-bytes", 8192,
+	// #971: default bumped 8 KiB → 64 KiB. The original 8 KiB was a
+	// per-module estimate from the #967 security review; the actual
+	// v0.2.2→v0.2.3 drift is ~10–12 KiB across 15 sub-module go.sum
+	// files. 64 KiB bounds a runaway-diff attack but accommodates
+	// expected drift for ~80 modules of headroom.
+	fs.Int64Var(&in.maxDiffBytes, "max-diff-bytes", 65536,
 		"Hard cap on total diff size in bytes; larger diffs abort with msgDiffSizeCapExceeded")
 	fs.StringVar(&in.sumdbEndpoint, "sumdb-endpoint", sumdb.DefaultEndpoint,
 		"Sigstore checksum database endpoint")

@@ -193,7 +193,7 @@ Or pin a specific binary version into a job:
 
 ```yaml
 - name: Install audit-gen
-  run: go install github.com/axonops/audit/cmd/audit-gen@v0.2.0
+  run: go install github.com/axonops/audit/cmd/audit-gen@v0.2.3
 
 - name: Regenerate
   run: audit-gen -input taxonomy.yaml -output audit_generated.go -package mypackage
@@ -204,12 +204,12 @@ Or pin a specific binary version into a job:
 Maintainers triggering proxy.golang.org indexing after a release tag:
 
 ```bash
-make publish-trigger VERSION=v0.2.0
+make publish-trigger VERSION=v0.2.3
 ```
 
 This walks the published modules — including
 `github.com/axonops/audit/cmd/audit-gen` — and forces a proxy
-fetch so `go install …@v0.2.0` resolves immediately.
+fetch so `go install …@v0.2.3` resolves immediately.
 
 ## See also
 

@@ -177,7 +177,7 @@ jobs:
           go-version: '1.26'
 
       - name: Install audit-validate
-        run: go install github.com/axonops/audit/cmd/audit-validate@v0.2.0
+        run: go install github.com/axonops/audit/cmd/audit-validate@v0.2.3
 
       - name: Validate every env
         run: |

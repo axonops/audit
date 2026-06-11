@@ -35,7 +35,7 @@ small binaries).
 
 ```bash
 # Pin the version to keep CI reproducible:
-go install github.com/axonops/audit/cmd/audit-validate@v0.1.11
+go install github.com/axonops/audit/cmd/audit-validate@v0.2.3
 
 # Or, for ad-hoc local use:
 go install github.com/axonops/audit/cmd/audit-validate@latest
@@ -44,7 +44,7 @@ go install github.com/axonops/audit/cmd/audit-validate@latest
 Released versions are also published as pre-built binaries by
 GoReleaser alongside `audit-gen`; see the GitHub Releases page.
 
-In CI, **always pin to a specific version** (`@v0.1.11`, not
+In CI, **always pin to a specific version** (`@v0.2.3`, not
 `@latest`). `@latest` resolves to whatever the proxy serves at run
 time and makes validation results non-reproducible across runs.
 
@@ -162,7 +162,7 @@ jobs:
           cache: true
       - name: Install audit-validate
         # Pin the version; never use @latest in CI.
-        run: go install github.com/axonops/audit/cmd/audit-validate@v0.1.11
+        run: go install github.com/axonops/audit/cmd/audit-validate@v0.2.3
       - name: Validate audit configuration
         run: |
           audit-validate \

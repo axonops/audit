@@ -110,8 +110,9 @@ checksum:
 # We sign checksums.txt — not every binary — because the checksum
 # file is the cryptographic root of trust for every artifact in the
 # release: a verified checksums.txt plus `sha256sum -c` extends the
-# guarantee to every binary listed inside it. One signature pair
-# (.sig + .pem) protects the entire release manifest.
+# guarantee to every binary listed inside it. One bundle file
+# (.bundle) protects the entire release manifest (#958 — cosign v2.6
+# bundle format; the pre-#958 .sig + .pem split is retired).
 #
 # Identity: https://github.com/axonops/audit/.github/workflows/release.yml@refs/tags/<tag>
 # Issuer:   https://token.actions.githubusercontent.com

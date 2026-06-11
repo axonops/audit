@@ -146,8 +146,9 @@ jobs:
           # hatch — overrides the auto-detection. Set it to the
           # workflow_dispatch `version` input so .Tag / .Version
           # resolve to the dispatched value regardless of what
-          # `git describe` would pick. #958 tracks collapsing this
-          # bandage stack into a single fix.
+          # `git describe` would pick. This is the canonical
+          # structural fix for the lightweight-vs-annotated tag
+          # ambiguity (#958 retired the surrounding bandages).
           GORELEASER_CURRENT_TAG: ${{ inputs.version }}
 
       - name: Attest release artifacts

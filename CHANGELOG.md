@@ -6,6 +6,49 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Cosign signature artefact is now a single bundle file (#958).**
+  The release signature recipe migrates from the split
+  `checksums.txt.sig` + `checksums.txt.pem` layout to the cosign
+  v2.6 bundle format (`checksums.txt.bundle`). The new verifier
+  recipe is:
+
+  ```bash
+  cosign verify-blob \
+    --bundle checksums.txt.bundle \
+    --certificate-identity-regexp '^https://github\.com/axonops/audit/\.github/workflows/release\.yml@refs/tags/v.+$' \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+    --certificate-github-workflow-repository axonops/audit \
+    checksums.txt
+  ```
+
+  Requires cosign v2.6+ (the bundle-format flag is the v2.6
+  default). Consumers using cosign v2.5 must upgrade. The
+  `goreleaser.yml` and `release.yml` `cosign-installer` v2.5.3
+  pins added by #950/#953 are removed in the same change.
+  `docs/releasing.md` "Verify a Release with Cosign" rewrites the
+  recipe end-to-end.
+
+### Removed
+
+- **`ghcr.io/axonops/audit-gen` OCI image publishing (#953).** The
+  multi-arch container image added in #610 is no longer published.
+  `audit-gen` is a developer-facing CLI tool whose canonical
+  install path is the Go module proxy
+  (`go install github.com/axonops/audit/cmd/audit-gen@vX.Y.Z`) or
+  the per-release binary tarball at
+  <https://github.com/axonops/audit/releases>. Shipping a docker
+  image added a recurring release tax (login step, cosign-installer
+  flag drift, `.Tag` template ambiguity vs annotated tags, GHCR
+  org-package permission chase) and was not pulling its weight —
+  the v0.2.2 dispatch was blocked across attempts 5–7 on it. The
+  `dockers:` / `docker_manifests:` / `docker_signs:` stanzas, the
+  `cmd/audit-gen/Dockerfile`, and the workflow docker-login + buildx
+  + qemu steps are all removed. The release tarball + checksum +
+  cosign signature + build-provenance attestation paths are
+  unchanged.
+
 ### Fixed
 
 - **Fix release dispatch failing on post-tag go.sum drift via preflight-tidy job (#967).**
@@ -31,64 +74,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `::warning::` + GFM CAUTION audit trail. See `docs/releasing.md`
   § "Preflight tidy (#967)" for the failure-mode table and the
   operator playbook. Tested by 9 named bats assertions
-  (`tests/release-scripts/release-yml-grep.bats`) and 11 table-
+  (`tests/release-scripts/release-yml-grep.bats`) and 19 table-
   driven Go tests (`cmd/release-tool/cmd_preflight_tidy_check_test.go`
   + `cmd/release-tool/internal/sumdb/lookup_test.go`).
-
-### Changed
-
-- **Cosign signature artefact is now a single bundle file (#958).**
-  The release signature recipe migrates from the split
-  `checksums.txt.sig` + `checksums.txt.pem` layout to the cosign
-  v2.6 bundle format (`checksums.txt.bundle`). The new verifier
-  recipe is:
-
-  ```bash
-  cosign verify-blob \
-    --bundle checksums.txt.bundle \
-    --certificate-identity-regexp '^https://github\.com/axonops/audit/\.github/workflows/release\.yml@refs/tags/v.+$' \
-    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-    --certificate-github-workflow-repository axonops/audit \
-    checksums.txt
-  ```
-
-  Requires cosign v2.6+ (the bundle-format flag is the v2.6
-  default). Consumers using cosign v2.5 must upgrade. The
-  `goreleaser.yml` manual-rerun workflow's cosign-installer pin
-  (introduced by #950, mirrored on `release.yml` in #953) is
-  removed in the same change. `docs/releasing.md` "Verify a
-  Release with Cosign" rewrites the recipe end-to-end.
-
-### Removed
-
-- **`ghcr.io/axonops/audit-gen` OCI image publishing (#953).** The
-  multi-arch container image added in #610 is no longer published.
-  `audit-gen` is a developer-facing CLI tool whose canonical
-  install path is the Go module proxy
-  (`go install github.com/axonops/audit/cmd/audit-gen@vX.Y.Z`) or
-  the per-release binary tarball at
-  <https://github.com/axonops/audit/releases>. Shipping a docker
-  image added a recurring release tax (login step, cosign-installer
-  flag drift, `.Tag` template ambiguity vs annotated tags, GHCR
-  org-package permission chase) and was not pulling its weight —
-  the v0.2.2 dispatch was blocked across attempts 5–7 on it. The
-  `dockers:` / `docker_manifests:` / `docker_signs:` stanzas, the
-  `cmd/audit-gen/Dockerfile`, and the workflow docker-login + buildx
-  + qemu steps are all removed. The release tarball + checksum +
-  cosign signature + build-provenance attestation paths are
-  unchanged.
-
-### Fixed
-
-- **`release.yml` cosign binary pin (#953).** The automated tag
-  flow's `sigstore/cosign-installer` step was previously unpinned
-  and defaulted to `cosign latest`, which now resolves to v2.6+
-  with `--new-bundle-format` as the silent default. This is the
-  same regression that broke v0.2.2's 5th manual dispatch and was
-  fixed in `goreleaser.yml` under #950. Pinned to `v2.5.3` to keep
-  the `.sig` / `.pem` layout consumers' verifier recipe depended
-  on at the time of #953; subsequently removed in #958 when the
-  signs: stanza migrated to the cosign v2.6 bundle format.
 - **`regen-schema-artifacts-check` + `ta-diff-check` release-PR
   head-ref carve-out (#957).** Both Makefile targets shell out to
   `go run ./cmd/audit-gen`, which has to resolve every published

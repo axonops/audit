@@ -360,7 +360,7 @@ The supply-chain primitives we DO provide are stronger for both audiences:
   attestation. Verify any downloaded artifact:
 
   ```bash
-  gh attestation verify audit-gen_v0.1.x_linux_amd64.tar.gz \
+  gh attestation verify audit-gen_v0.2.3_linux_amd64.tar.gz \
       --repo axonops/audit
   ```
 
@@ -391,12 +391,13 @@ Every release publishes a Sigstore-keyless signature over
 `checksums.txt` alongside the existing build-provenance attestation
 (#516). The two mechanisms protect different properties:
 
-- **Cosign signature** (`checksums.txt.sig` + `checksums.txt.pem`)
-  proves the checksum file came from the `axonops/audit`
-  GitHub Actions workflow at the tagged ref. There is no long-lived
-  private key — each signature is bound to the OIDC identity of the
-  workflow run via Sigstore's Fulcio CA, and the signature is
-  recorded in the public Rekor transparency log.
+- **Cosign bundle** (`checksums.txt.bundle`) proves the checksum
+  file came from the `axonops/audit` GitHub Actions workflow at the
+  tagged ref. The bundle is a single file containing the signature,
+  the Fulcio-issued short-lived X.509 certificate, and the Rekor
+  transparency-log entry — the cosign v2.6 default format
+  (migrated in #958). There is no long-lived private key; each
+  signature is bound to the OIDC identity of the workflow run.
 - **Build provenance** (`gh attestation verify ...`) proves the
   artifact was built from a specific commit SHA by that workflow.
 

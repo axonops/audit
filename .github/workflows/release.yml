@@ -1155,6 +1155,124 @@ jobs:
         run: make check-release-invariants VERSION="$PUBLISH_VERSION"
 
   # =====================================================================
+  # Job: post-release-tidy (#959)
+  # =====================================================================
+  # After tag-all publishes the v* tags, `go mod tidy` against every
+  # sub-module's go.mod produces a diff: proxy.golang.org now resolves
+  # the just-published `github.com/axonops/audit vX.Y.Z` and fills in
+  # the corresponding go.sum entries. Before the tag was published,
+  # tidy could not download the version and so could not write the
+  # checksum line. The result: main's Hygiene job's `tidy-check` fails
+  # IMMEDIATELY post-release until a maintainer hand-tidies and pushes
+  # a commit. Every fix PR after v0.2.2 (#948-#955) had to be
+  # admin-merged for this reason.
+  #
+  # This job runs tidy against the just-tagged commit, App-signs the
+  # diff via release-tool commit-pinned-deps (the allowlist already
+  # covers go.mod + go.sum), and opens an auto-merge PR. If tidy
+  # produces no diff the job exits 0 with a log — there is no
+  # post-release drift to absorb on minor-version-bump releases that
+  # only touch already-released module pins.
+  # =====================================================================
+  post-release-tidy:
+    name: Post-release go.sum refresh
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [preflight, tag-all, invariants]
+    # #956 pattern — explicit gate over the direct upstreams so the
+    # push:tag recovery path runs this step too.
+    if: |
+      always() &&
+      needs.preflight.result == 'success' &&
+      needs.tag-all.result == 'success' &&
+      needs.invariants.result == 'success'
+    permissions:
+      contents: read  # App token grants the writes
+    steps:
+      - name: Mint release-bot App token
+        id: app
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v2.1.4
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Checkout main
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build release-tool
+        uses: ./.github/actions/build-release-tool
+
+      - name: Run make tidy
+        # Refresh every published module's go.sum against the just-
+        # tagged version. The Makefile's tidy target shells out to
+        # `go mod tidy` per module (per PUBLISH_MODULES).
+        run: make tidy
+
+      - name: Commit and open auto-merge PR if diff
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet HEAD --; then
+            echo "::notice::make tidy produced no diff — no post-release drift to absorb."
+            exit 0
+          fi
+          BRANCH="chore/post-release-tidy-${PUBLISH_VERSION}"
+          # Recreate the branch idempotently — a previous failed run
+          # may have left a stale branch + open PR. Mirrors the
+          # release-prep PR job's pattern (#927 BLOCKER-F, BLOCKER-D).
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            echo "Stale branch $BRANCH exists on origin — closing any open PRs and deleting."
+            stale_prs_file="$(mktemp)"
+            trap 'rm -f "$stale_prs_file"' RETURN
+            gh pr list --head "$BRANCH" --state open --json number --jq '.[].number' \
+              > "$stale_prs_file"
+            while IFS= read -r pr; do
+              [[ -z "$pr" ]] && continue
+              echo "  closing stale PR #$pr"
+              gh pr close "$pr" --delete-branch=false --comment "Superseded by re-run of release workflow."
+            done < "$stale_prs_file"
+            git push origin --delete "$BRANCH"
+          fi
+          git add -A
+          # App-signed commit via release-tool's existing
+          # commit-pinned-deps subcommand — its file allowlist already
+          # covers go.mod + go.sum, which is exactly the post-tidy
+          # diff surface. Reusing the binary avoids a parallel
+          # commit-and-sign code path.
+          "$RELEASE_TOOL" commit-pinned-deps \
+            --owner "${{ github.repository_owner }}" \
+            --repo "${{ github.event.repository.name }}" \
+            --branch "$BRANCH" \
+            --message "chore: post-release go.sum refresh ($PUBLISH_VERSION)" \
+            --auto-create-branch
+          PR_URL=$(gh pr create \
+            --base main --head "$BRANCH" \
+            --title "chore: post-release go.sum refresh ($PUBLISH_VERSION)" \
+            --body "Automated post-release tidy (#959). go.sum entries for ${PUBLISH_VERSION} are now resolvable via proxy.golang.org; this PR commits the refreshed checksums so main's Hygiene tidy-check passes for the next release-prep PR.")
+          if ! [[ "$PR_URL" =~ ^https://github\.com/.+/pull/[0-9]+$ ]]; then
+            echo "::error::gh pr create returned an unexpected URL: $PR_URL"
+            exit 1
+          fi
+          NUM="${PR_URL##*/}"
+          if ! gh pr merge "$NUM" --auto --squash; then
+            echo "::error::gh pr merge --auto --squash refused PR #$NUM."
+            exit 1
+          fi
+          echo "::notice::Post-release tidy PR opened: $PR_URL"
+
+  # =====================================================================
   # Job: summary
   # =====================================================================
   summary:
@@ -1175,6 +1293,7 @@ jobs:
       - mutation-test-attach
       - verify
       - invariants
+      - post-release-tidy
     if: always()
     steps:
       - name: Checkout (for make print-publish-modules)
@@ -1216,6 +1335,7 @@ jobs:
             fi
             echo "| Verify | ${{ needs.verify.result }} |"
             echo "| Invariants | ${{ needs.invariants.result }} |"
+            echo "| Post-release Tidy | ${{ needs.post-release-tidy.result }} |"
             echo
             echo '### Modules'
             echo

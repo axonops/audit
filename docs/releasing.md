@@ -141,14 +141,15 @@ If a release contains a serious bug, the correct response is:
 
 ## Verify a Release with Cosign
 
-Every release publishes two artifacts alongside the usual binaries
-and `checksums.txt`:
+Every release publishes one signature bundle alongside the usual
+binaries and `checksums.txt`:
 
-- `checksums.txt.sig` — Sigstore-keyless signature of the checksum
-  file.
-- `checksums.txt.pem` — short-lived X.509 certificate issued by
-  Fulcio, binding the signature to the GitHub Actions identity that
-  produced this release.
+- `checksums.txt.bundle` — single-file Sigstore bundle containing
+  the keyless signature, the short-lived Fulcio X.509 certificate
+  binding it to the GitHub Actions identity that produced this
+  release, and the Rekor transparency-log entry. Replaces the
+  split `checksums.txt.sig` + `checksums.txt.pem` layout that
+  predates #958.
 
 The signing flow uses Sigstore [keyless OIDC] — there is no
 long-lived private key. Each release identity is the workflow file
@@ -159,20 +160,19 @@ signature is recorded in the public Rekor transparency log.
 
 ### Required tools
 
-- [`cosign`](https://docs.sigstore.dev/cosign/installation/) ≥ v2.5
-  — earlier versions do not support the
-  `--certificate-github-workflow-repository` flag used below for
-  defence-in-depth identity verification.
+- [`cosign`](https://docs.sigstore.dev/cosign/installation/) ≥ v2.6
+  — the bundle-format `--bundle` flag is the v2.6 default. Earlier
+  cosign releases require additional flags and are not supported
+  by this verifier recipe.
 
 ### Verify the checksum file
 
-Download `checksums.txt`, `checksums.txt.sig`, and `checksums.txt.pem`
-from the release page, then run:
+Download `checksums.txt` and `checksums.txt.bundle` from the release
+page, then run:
 
 ```bash
 cosign verify-blob \
-  --certificate checksums.txt.pem \
-  --signature checksums.txt.sig \
+  --bundle checksums.txt.bundle \
   --certificate-identity-regexp '^https://github\.com/axonops/audit/\.github/workflows/release\.yml@refs/tags/v.+$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-github-workflow-repository axonops/audit \
@@ -219,9 +219,9 @@ downloading the rest. The `Verified OK` line from `cosign` plus an
 
 - **`Verified OK` not printed.** The signature does not verify
   against the published certificate — consumers MUST NOT use the
-  artifact. Possible causes: wrong file pair (downloading `.sig`
-  from one release with `checksums.txt` from another), corrupted
-  download, or active tampering. Re-download from
+  artifact. Possible causes: wrong file pair (downloading
+  `.bundle` from one release with `checksums.txt` from another),
+  corrupted download, or active tampering. Re-download from
   `https://github.com/axonops/audit/releases` over HTTPS and retry.
 - **Identity-regex mismatch.** The certificate identity does not
   match the anchored regex above. This is the strongest red flag
@@ -246,13 +246,11 @@ gate in any CI system. Minimal GitHub Actions example:
     VERSION=v1.0.0
     URL="https://github.com/axonops/audit/releases/download/${VERSION}"
     curl -fsSLO "${URL}/checksums.txt"
-    curl -fsSLO "${URL}/checksums.txt.sig"
-    curl -fsSLO "${URL}/checksums.txt.pem"
+    curl -fsSLO "${URL}/checksums.txt.bundle"
     curl -fsSLO "${URL}/audit-gen_${VERSION#v}_linux_amd64.tar.gz"
 
     cosign verify-blob \
-      --certificate checksums.txt.pem \
-      --signature checksums.txt.sig \
+      --bundle checksums.txt.bundle \
       --certificate-identity-regexp '^https://github\.com/axonops/audit/\.github/workflows/release\.yml@refs/tags/v.+$' \
       --certificate-oidc-issuer https://token.actions.githubusercontent.com \
       --certificate-github-workflow-repository axonops/audit \

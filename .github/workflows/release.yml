@@ -915,15 +915,13 @@ jobs:
       # Sigstore keyless signing (#516). Installs the cosign binary
       # so the GoReleaser `signs:` stanza can call `cosign sign-blob`
       # against the GHA OIDC token (id-token: write above) for
-      # keyless certificate issuance from Fulcio. Pinned to v2.5.3
-      # (same as goreleaser.yml manual-rerun) to keep the .sig/.pem
-      # layout consumers' verifier recipe depends on; cosign v2.6
-      # switches to --new-bundle-format silently. Action itself is
-      # SHA-pinned per repository action-pin policy.
+      # keyless certificate issuance from Fulcio. Action SHA-pinned
+      # per repository action-pin policy; cosign binary itself left
+      # at the action default (latest stable). #958 removed the
+      # earlier v2.5.3 pin (added by #953) when the signs: stanza
+      # migrated to the cosign v2.6 bundle format.
       - name: Install cosign
         uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
-        with:
-          cosign-release: 'v2.5.3'
 
       # MINOR-3 fix (#927): pin the GoReleaser binary version
       # explicitly to v2.15.4. The Action itself is SHA-pinned
@@ -949,8 +947,7 @@ jobs:
             dist/*.tar.gz
             dist/*.zip
             dist/checksums.txt
-            dist/checksums.txt.sig
-            dist/checksums.txt.pem
+            dist/checksums.txt.bundle
 
   # =====================================================================
   # Job: verify

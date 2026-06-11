@@ -546,6 +546,81 @@ configuration in the UI before tagging the release.
 
 ## For Maintainers: Cutting a Release
 
+### Preflight tidy (#967)
+
+Every `workflow_dispatch` of `release.yml` starts with a
+`preflight-tidy` job that runs `make tidy` on the dispatched main
+ref BEFORE the CI Gate runs, then absorbs any benign go.sum drift
+into an App-signed auto-merge PR. This mirrors `post-release-tidy`
+(#959/#966) on the PRE-side of the release flow, closing the
+chicken-and-egg gap where the very first release after a
+non-tidy-state cannot self-heal.
+
+**Why it exists.** v0.2.3's dispatch (run 27325930898) failed at
+the CI Gate's Hygiene job because main's `go.sum` carried v0.2.2's
+post-tag drift. `make tidy` produced a diff, `tidy-check` failed,
+the whole CI Gate cascaded into failure, and tag-all never ran.
+#966's `post-release-tidy` was meant to prevent this AFTER each
+release, but it only takes effect once it has been merged AND
+run — and run-1 is v0.2.3 itself, which couldn't reach tag-all.
+#967 closes that gap.
+
+**What the job does.**
+
+1. Mints a release-bot App token; checks out main.
+2. Runs `make tidy` against every published module.
+3. Invokes `release-tool preflight-tidy-check` to enforce 6
+   NON-NEGOTIABLE safety gates against the resulting diff. The
+   subcommand is typed Go (`cmd/release-tool/cmd_preflight_tidy_check.go`)
+   — bash + jq + gh-CLI for release-critical work was retired by
+   #929 and a regression to inline bash would have re-opened the
+   v0.2.1 cascade class.
+4. On no-diff, exits with `preflight-tidy: no drift to absorb` and
+   the rest of the release dispatch proceeds against main HEAD
+   unchanged.
+5. On a clean diff, App-signs the commit via
+   `release-tool commit-pinned-deps` (existing allowlist already
+   covers go.mod + go.sum), opens an auto-merge PR titled
+   `chore: preflight-tidy go.sum refresh (vX.Y.Z)`, polls until
+   the PR merges, then continues with the release dispatch.
+
+**The 6 safety gates.**
+
+| # | Gate | Failure exit string |
+|---|------|---------------------|
+| 1 | Diff is go.sum-only (no go.mod changes) | `preflight-tidy: go.mod modified — aborting` |
+| 2 | Additions only (no deletions) | `preflight-tidy: go.sum lines deleted — aborting` |
+| 3 | Lines reference published modules at the last-released version only | `preflight-tidy: unrelated checksum lines — aborting` |
+| 4 | sum.golang.org transparency-log cross-check on every (module, version) | `preflight-tidy: sum.golang.org disagrees — aborting` (mismatch) / `preflight-tidy: sum.golang.org timeout or 5xx — aborting` (transient) |
+| 5 | Diff committed via auto-merge PR, never direct push | (orchestrated in workflow; `preflight-tidy: PR auto-merge refused — aborting` on a merge refusal) |
+| 6 | `inputs.skip_preflight_tidy=true` escape hatch | `preflight-tidy: skipped via skip_preflight_tidy input` |
+
+A successful no-drift run emits `preflight-tidy: no drift to
+absorb`; a successful drift-absorbed run emits
+`preflight-tidy: PR opened`. Every emit goes to both stdout AND
+`$GITHUB_STEP_SUMMARY` so operators can audit the dispatch trail.
+
+**`inputs.skip_preflight_tidy` escape hatch.**
+
+The workflow_dispatch input bypasses the preflight-tidy gate
+entirely. Set it ONLY when:
+
+- An independent investigation has confirmed the go.sum drift is
+  benign AND
+- sum.golang.org is known to be unreachable (verified via an
+  alternate channel — not just "the gate failed and we want to
+  ship").
+
+**NEVER** set the flag in response to a `gate 4` disagreement.
+A `sum.golang.org disagrees` message means the proxy is returning
+a hash the transparency log does not have — that is a supply-chain
+anomaly to investigate, not bypass.
+
+A bypass is logged as a `::warning::` workflow annotation AND
+emits a GFM `> [!CAUTION]` admonition to the run summary
+containing the actor login + timestamp. Bypassing leaves an
+auditable trail; do not use it casually.
+
 ### Release Workflow Overview
 
 Two GitHub Actions workflows participate in releases. The primary workflow

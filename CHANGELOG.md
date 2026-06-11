@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Fix release dispatch failing on post-tag go.sum drift via preflight-tidy job (#967).**
+  v0.2.3's dispatch (`workflow_dispatch` run 27325930898) failed at
+  the CI Gate's Hygiene job because main's `go.sum` carried v0.2.2's
+  post-tag-publication drift residue. #959/#966 added a
+  `post-release-tidy` job to absorb that drift AFTER each release —
+  but #966 only takes effect once it has been merged AND run, and
+  run-1 is v0.2.3 itself, which couldn't reach `tag-all` without a
+  clean Hygiene. Chicken-and-egg.
+  The new `preflight-tidy` job in `release.yml` runs BEFORE the CI
+  Gate, mirrors #966 on the PRE-side of the release flow, and
+  enforces 6 NON-NEGOTIABLE safety gates against the resulting
+  diff via a new `release-tool preflight-tidy-check` subcommand
+  (typed Go — bash + jq + gh-CLI for release-critical work was
+  retired by #929 and a regression to inline bash would have
+  re-opened the v0.2.1 cascade class). Gates: (1) go.sum-only, no
+  go.mod changes; (2) additions only, no deletions; (3) lines
+  reference only published modules at the last-released version;
+  (4) every (module, version) cross-checked against sum.golang.org's
+  transparency log; (5) PR-only commits (never direct-push); (6)
+  `inputs.skip_preflight_tidy` operator escape hatch with mandatory
+  `::warning::` + GFM CAUTION audit trail. See `docs/releasing.md`
+  § "Preflight tidy (#967)" for the failure-mode table and the
+  operator playbook. Tested by 9 named bats assertions
+  (`tests/release-scripts/release-yml-grep.bats`) and 11 table-
+  driven Go tests (`cmd/release-tool/cmd_preflight_tidy_check_test.go`
+  + `cmd/release-tool/internal/sumdb/lookup_test.go`).
+
 ### Changed
 
 - **Cosign signature artefact is now a single bundle file (#958).**

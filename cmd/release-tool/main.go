@@ -123,6 +123,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return runCreateTag(ctx, subArgs, stdout, stderr, &rf)
 	case "commit-pinned-deps":
 		return runCommitPinnedDeps(ctx, subArgs, stdout, stderr, &rf)
+	case "preflight-tidy-check":
+		return runPreflightTidyCheck(ctx, subArgs, stdout, stderr, &rf)
 	}
 
 	_, _ = fmt.Fprintf(stderr, "release-tool: unknown subcommand %q; run --help for usage\n", sub)
@@ -195,6 +197,12 @@ SUBCOMMANDS
                           Idempotent: tag-at-same-SHA exits 4 (no-op);
                           tag-at-different-SHA exits 1 (contamination).
                           Replaces the v0.2.1 bash tag helper.
+    preflight-tidy-check  Validate the working-tree diff produced by
+                          ` + "`make tidy`" + ` against the six #967 safety gates
+                          before the release.yml preflight-tidy job
+                          commits it. Exits non-zero with an exact
+                          operator-facing error string on any gate
+                          failure.
 
 EXIT CODES
     0 — success

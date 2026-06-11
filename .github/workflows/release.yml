@@ -48,6 +48,16 @@ on:
         required: false
         type: number
         default: 45
+      # #967 escape hatch: when true, skips the preflight-tidy job
+      # entirely. Use ONLY when an independent investigation has
+      # confirmed go.sum drift is benign and sum.golang.org is
+      # known-unreachable; NEVER bypass on a gate-4 disagreement.
+      # Subject to a future actor-allowlist check (planned).
+      skip_preflight_tidy:
+        description: "Skip the #967 preflight-tidy gate. NEVER use on a sum.golang.org disagreement."
+        required: false
+        type: boolean
+        default: false
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
@@ -154,6 +164,222 @@ jobs:
           fi
 
   # =====================================================================
+  # Job: preflight-tidy (#967, workflow_dispatch only)
+  # =====================================================================
+  # Mirror of post-release-tidy (#959/#966) on the PRE-side of the
+  # release flow. v0.2.3's dispatch (run 27325930898) failed because
+  # main's go.sum carried v0.2.2's post-tag drift residue; #966's
+  # post-release-tidy only takes effect AFTER tag-all, so the FIRST
+  # release after a non-tidy state cannot self-heal without this
+  # mirror.
+  #
+  # The job:
+  #   1. Runs `make tidy` on a fresh checkout of main.
+  #   2. Validates the diff via `release-tool preflight-tidy-check`,
+  #      which enforces 6 NON-NEGOTIABLE safety gates (see #967):
+  #        - go.sum-only (no go.mod changes)
+  #        - additions only (no deletions)
+  #        - lines reference only published modules at the last-
+  #          released version
+  #        - sum.golang.org cross-check (transparency-log h1: match)
+  #        - auto-merge PR (never direct push)
+  #        - inputs.skip_preflight_tidy escape hatch
+  #   3. On a no-diff result, exits cleanly and the rest of the
+  #      release dispatch proceeds against main HEAD unchanged.
+  #   4. On a clean diff, App-signs the commit via
+  #      `release-tool commit-pinned-deps` (existing allowlist
+  #      covers go.mod + go.sum) and opens an auto-merge PR.
+  # =====================================================================
+  preflight-tidy:
+    name: Preflight Tidy (#967)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [preflight]
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read  # App token grants writes
+    steps:
+      - name: Short-circuit if skip_preflight_tidy=true
+        # #967 security-review MEDIUM-1: route untrusted-ish values
+        # (github.actor) through env so the bash interpolation is
+        # purely a string variable — never inline ${{ }} into the
+        # `run:` block.
+        env:
+          SKIP: ${{ inputs.skip_preflight_tidy }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          if [ "$SKIP" = "true" ]; then
+            # AC #4 exact string — operator-readable signal.
+            echo "preflight-tidy: skipped via skip_preflight_tidy input"
+            echo "preflight-tidy: skipped via skip_preflight_tidy input" >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::#967 preflight-tidy bypassed via skip_preflight_tidy input by $ACTOR"
+            # Emit GFM CAUTION admonition so the bypass surfaces
+            # prominently in the run UI (security-reviewer Q5).
+            {
+              echo ""
+              echo "> [!CAUTION]"
+              echo "> Preflight-tidy gate bypassed via \`skip_preflight_tidy=true\` by **$ACTOR**"
+              echo "> at \`$(date -u +'%Y-%m-%dT%H:%M:%SZ')\`."
+              echo "> This disables the #967 supply-chain checks for this release."
+              echo "> If this was NOT in response to a verified sum.golang.org outage, treat as a"
+              echo "> security incident and file accordingly."
+            } >> "$GITHUB_STEP_SUMMARY"
+            # Exit 0 — the `if` clause's gate ensures downstream
+            # jobs see this as "skipped", not "failed".
+            exit 0
+          fi
+
+      - name: Mint release-bot App token
+        if: inputs.skip_preflight_tidy != true
+        id: app
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v2.1.4
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Checkout main
+        if: inputs.skip_preflight_tidy != true
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+
+      - name: Set up Go
+        if: inputs.skip_preflight_tidy != true
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build release-tool
+        if: inputs.skip_preflight_tidy != true
+        uses: ./.github/actions/build-release-tool
+
+      - name: Resolve last-released version
+        if: inputs.skip_preflight_tidy != true
+        id: last
+        run: |
+          set -euo pipefail
+          # The last published core tag (sorted semver) — the
+          # version whose post-tag drift the preflight is absorbing.
+          LAST=$(git tag --list 'v*' --sort=-v:refname | head -n1)
+          if [ -z "$LAST" ]; then
+            echo "::error::No previously-released v* tag found on origin — preflight-tidy needs a baseline"
+            exit 1
+          fi
+          echo "last_version=$LAST" >> "$GITHUB_OUTPUT"
+          echo "Last released version: $LAST"
+
+      - name: Run make tidy
+        if: inputs.skip_preflight_tidy != true
+        run: make tidy
+
+      - name: Run preflight-tidy-check (gates 1-4 + diff size cap)
+        if: inputs.skip_preflight_tidy != true
+        id: check
+        env:
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.version }}
+          LAST_VERSION: ${{ steps.last.outputs.last_version }}
+        run: |
+          set -euo pipefail
+          # The released-version-shaped module path set the issue's
+          # gate 3 anchors against. Derive from
+          # `make print-publish-modules` so the workflow text
+          # contains no module list that can drift from the canonical
+          # Makefile source.
+          MODS=$(make -s --no-print-directory print-publish-modules \
+            | awk -F'|' '{ printf "%s%s", sep, $2; sep="," }')
+          if [ -z "$MODS" ]; then
+            echo "::error::make print-publish-modules returned empty list"
+            exit 1
+          fi
+          set +e
+          "$RELEASE_TOOL" preflight-tidy-check \
+            --workdir . \
+            --last-released-version "$LAST_VERSION" \
+            --published-modules "$MODS" \
+            --sumdb-endpoint https://sum.golang.org
+          rc=$?
+          set -e
+          # Pipe the captured stdout (which contains the AC #4
+          # exact strings on the abort paths) into the run summary.
+          {
+            echo "## preflight-tidy"
+            echo ""
+            echo "Exit code: $rc"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+          case "$rc" in
+            0) echo "preflight-tidy: gates passed; diff is safe to commit" ;;
+            4) echo "preflight-tidy: no drift to absorb" ;;
+            *) exit "$rc" ;;
+          esac
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+
+      - name: Open auto-merge PR if diff present
+        if: inputs.skip_preflight_tidy != true && steps.check.outputs.rc == '0'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          BRANCH="chore/preflight-tidy-${PUBLISH_VERSION}"
+          # Stale-branch cleanup (mirrors #966 / #927 BLOCKER-F).
+          # #967 review N1: RETURN trap only fires on function
+          # return, not on script exit. Use EXIT so the tempfile
+          # cleanup actually runs even when the script aborts.
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            stale_prs_file="$(mktemp)"
+            trap 'rm -f "$stale_prs_file"' EXIT
+            gh pr list --head "$BRANCH" --state open --json number --jq '.[].number' \
+              > "$stale_prs_file"
+            while IFS= read -r pr; do
+              [[ -z "$pr" ]] && continue
+              gh pr close "$pr" --delete-branch=false \
+                --comment "Superseded by re-run of release workflow."
+            done < "$stale_prs_file"
+            git push origin --delete "$BRANCH"
+          fi
+          git add -A
+          "$RELEASE_TOOL" commit-pinned-deps \
+            --owner "${{ github.repository_owner }}" \
+            --repo "${{ github.event.repository.name }}" \
+            --branch "$BRANCH" \
+            --message "chore: preflight-tidy go.sum refresh (${PUBLISH_VERSION})" \
+            --auto-create-branch
+          PR_URL=$(gh pr create \
+            --base main --head "$BRANCH" \
+            --title "chore: preflight-tidy go.sum refresh (${PUBLISH_VERSION})" \
+            --body "Automated preflight-tidy (#967). go.sum entries are tidied and verified against sum.golang.org before the rest of the ${PUBLISH_VERSION} release dispatch runs.")
+          if ! [[ "$PR_URL" =~ ^https://github\.com/.+/pull/[0-9]+$ ]]; then
+            echo "::error::gh pr create returned an unexpected URL: $PR_URL"
+            exit 1
+          fi
+          NUM="${PR_URL##*/}"
+          if ! gh pr merge "$NUM" --auto --squash; then
+            echo "preflight-tidy: PR auto-merge refused — aborting"
+            echo "preflight-tidy: PR auto-merge refused — aborting" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          # AC #4 exact string.
+          echo "preflight-tidy: PR opened"
+          echo "preflight-tidy: PR opened" >> "$GITHUB_STEP_SUMMARY"
+          # Brief poll loop — caps at 5 minutes so the rest of the
+          # release dispatch isn't blocked indefinitely on a stuck PR.
+          for i in $(seq 1 30); do
+            state=$(gh pr view "$NUM" --json state --jq '.state')
+            if [ "$state" = "MERGED" ]; then
+              echo "preflight-tidy: PR #$NUM merged"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::preflight-tidy: PR #$NUM not merged within 5 minutes"
+          exit 1
+
+  # =====================================================================
   # Job: ci (workflow_dispatch only)
   # =====================================================================
   # The called ci.yml contains a `dependency-review` job that requests
@@ -165,8 +391,16 @@ jobs:
   # validation with a startup_failure (regression introduced in #631).
   ci:
     name: CI Gate
-    needs: [preflight]
-    if: github.event_name == 'workflow_dispatch'
+    needs: [preflight, preflight-tidy]
+    # #967: gate on preflight-tidy succeeding OR being skipped via
+    # the inputs.skip_preflight_tidy escape hatch. The
+    # `always() && (success || skipped)` pattern (#956) handles the
+    # case where preflight-tidy's job-level `if:` evaluates false.
+    if: |
+      always() &&
+      github.event_name == 'workflow_dispatch' &&
+      needs.preflight.result == 'success' &&
+      (needs.preflight-tidy.result == 'success' || needs.preflight-tidy.result == 'skipped')
     permissions:
       contents: read
       pull-requests: write
@@ -181,8 +415,12 @@ jobs:
     name: Long Fuzz (release gate)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: [ci]
-    if: github.event_name == 'workflow_dispatch'
+    needs: [ci, preflight-tidy]
+    if: |
+      always() &&
+      github.event_name == 'workflow_dispatch' &&
+      needs.ci.result == 'success' &&
+      (needs.preflight-tidy.result == 'success' || needs.preflight-tidy.result == 'skipped')
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -230,8 +468,12 @@ jobs:
     name: Benchmark Regression (advisory)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: [ci]
-    if: github.event_name == 'workflow_dispatch'
+    needs: [ci, preflight-tidy]
+    if: |
+      always() &&
+      github.event_name == 'workflow_dispatch' &&
+      needs.ci.result == 'success' &&
+      (needs.preflight-tidy.result == 'success' || needs.preflight-tidy.result == 'skipped')
     continue-on-error: true
     steps:
       - name: Checkout
@@ -319,8 +561,12 @@ jobs:
     # 4-hour budget — full suite is 60 min on local Ryzen 9, expected
     # 90-150 min on 4-core ubuntu-latest with headroom for cold caches.
     timeout-minutes: 240
-    needs: [preflight]
-    if: github.event_name == 'workflow_dispatch'
+    needs: [preflight, preflight-tidy]
+    if: |
+      always() &&
+      github.event_name == 'workflow_dispatch' &&
+      needs.preflight.result == 'success' &&
+      (needs.preflight-tidy.result == 'success' || needs.preflight-tidy.result == 'skipped')
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -357,8 +603,12 @@ jobs:
     name: API Check (gorelease)
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [ci]
-    if: github.event_name == 'workflow_dispatch'
+    needs: [ci, preflight-tidy]
+    if: |
+      always() &&
+      github.event_name == 'workflow_dispatch' &&
+      needs.ci.result == 'success' &&
+      (needs.preflight-tidy.result == 'success' || needs.preflight-tidy.result == 'skipped')
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -413,8 +663,16 @@ jobs:
     name: Open release PR
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [preflight, ci, fuzz-long, api-check, mutation-test-release]
-    if: github.event_name == 'workflow_dispatch'
+    needs: [preflight, preflight-tidy, ci, fuzz-long, api-check, mutation-test-release]
+    if: |
+      always() &&
+      github.event_name == 'workflow_dispatch' &&
+      needs.preflight.result == 'success' &&
+      needs.ci.result == 'success' &&
+      needs.fuzz-long.result == 'success' &&
+      needs.api-check.result == 'success' &&
+      needs.mutation-test-release.result == 'success' &&
+      (needs.preflight-tidy.result == 'success' || needs.preflight-tidy.result == 'skipped')
     permissions:
       contents: read  # job-level — App token grants the writes
     outputs:
@@ -1281,6 +1539,7 @@ jobs:
     timeout-minutes: 1
     needs:
       - preflight
+      - preflight-tidy
       - ci
       - fuzz-long
       - bench-advisory
@@ -1318,6 +1577,7 @@ jobs:
             echo '|------|--------|'
             echo "| Preflight | ${{ needs.preflight.result }} |"
             if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+              echo "| Preflight Tidy (#967) | ${{ needs.preflight-tidy.result }} |"
               echo "| CI Gate | ${{ needs.ci.result }} |"
               echo "| Long Fuzz | ${{ needs.fuzz-long.result }} |"
               echo "| Bench (advisory) | ${{ needs.bench-advisory.result }} |"

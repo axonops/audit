@@ -740,6 +740,23 @@ jobs:
           (cd /tmp/bats-core && git checkout --quiet "$BATS_REF" && ./install.sh "$HOME/.local")
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      # PR-13 (#960): install goreleaser + cosign at the same pinned
+      # versions the goreleaser.yml workflow uses, so the bats
+      # cli-flag-validity.bats tests can validate that every flag we
+      # pass at dispatch time is actually recognised by the tool. The
+      # actions used here are the same SHA-pinned ones in
+      # goreleaser.yml — same source of truth.
+      - name: Install goreleaser (release.yml-pinned version)
+        uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7.2.1
+        with:
+          version: 'v2.15.4'
+          install-only: true
+
+      - name: Install cosign (release.yml-pinned version)
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+        with:
+          cosign-release: 'v2.5.3'
+
       - name: Run release-script bats harness
         run: make test-release-scripts
 

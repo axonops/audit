@@ -1127,9 +1127,23 @@ regen-schema-artifacts:
 # regen-schema-artifacts-check verifies deploy/schemas/* are in sync
 # with the framework-only taxonomy and the current library state.
 # Wired into check-static so stale artifacts fail CI.
+#
+# Release-PR carve-out (#957): on a PR whose head branch matches the
+# `release/v*` pattern set by cmd/release-tool, the cross-module
+# go.mod files pin yet-to-be-tagged versions (tag-all runs AFTER the
+# PR merges). `go run ./cmd/audit-gen` cannot resolve those modules,
+# so the check would always fail. The artefact itself does not
+# change during release-PR pinning (it depends only on the framework
+# taxonomy + audit-gen output, neither of which the release PR
+# touches), so skipping is safe. Non-release PRs still run the check
+# in full. See `docs/releasing.md` § Troubleshooting.
 .PHONY: regen-schema-artifacts-check
 regen-schema-artifacts-check:
-	@TMP=$$(mktemp -d); \
+	@if echo "$${GITHUB_HEAD_REF:-}" | grep -qE '^release/v[0-9]+\.[0-9]+\.[0-9]+'; then \
+		echo "regen-schema-artifacts-check: skipping on release PR head ref $$GITHUB_HEAD_REF (#957)"; \
+		exit 0; \
+	fi; \
+	TMP=$$(mktemp -d); \
 	go run ./cmd/audit-gen -format json-schema \
 		-input internal/schemagen/framework_only_taxonomy.yaml \
 		-output "$$TMP/audit-event.framework.schema.json" >/dev/null && \
@@ -1184,8 +1198,19 @@ ta:
 # operator-facing file (the generator emits TA config files, not
 # documentation). A future change that DOES want the generator to
 # emit a README would have to drop this exclusion.
+#
+# Release-PR carve-out (#957): same rationale as
+# regen-schema-artifacts-check above. On a release/v* head ref, the
+# cross-module go.mod pinning blocks `go run ./cmd/audit-gen`. The
+# reference TA depends only on the reference TA taxonomy + audit-gen
+# output, neither of which the release PR touches, so skipping is
+# safe. The non-release path still runs the check.
 .PHONY: ta-diff-check
 ta-diff-check:
+	@if echo "$${GITHUB_HEAD_REF:-}" | grep -qE '^release/v[0-9]+\.[0-9]+\.[0-9]+'; then \
+		echo "ta-diff-check: skipping on release PR head ref $$GITHUB_HEAD_REF (#957)"; \
+		exit 0; \
+	fi
 	@# Generate into a temp subdir named splunk-ta-axonops-audit so
 	@# the PackageID (derived from filepath.Base(outDir)) matches
 	@# the committed reference TA exactly. Without the canonical

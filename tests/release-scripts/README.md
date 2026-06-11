@@ -27,11 +27,14 @@ scaffolding.
 | **Total** | — | **44** |
 
 Plus three meta-tests for the fixture stub binaries
-(`fixtures/bin/{go,git,make}`), 24 grep-based regression tests for
-`.github/workflows/release.yml` + the composite action at
-`.github/actions/build-release-tool/`, and 4 behavioural CLI flag
-validity tests (`cli-flag-validity.bats`, #960) that invoke the
-real gh / goreleaser / cosign tools. **Total: 87 tests.**
+(`fixtures/bin/{go,git,make}`), grep-based regression tests for
+`.github/workflows/release.yml` + `.github/workflows/goreleaser.yml`
++ the composite action at `.github/actions/build-release-tool/`,
+4 behavioural CLI flag validity tests (`cli-flag-validity.bats`,
+#960) that invoke the real gh / goreleaser / cosign tools, and 12
+release-PR carve-out tests for the `regen-schema-artifacts-check`
++ `ta-diff-check` Makefile targets (#957). Run
+`make test-release-scripts` for the current count.
 
 ## What is **not** covered
 
@@ -52,6 +55,8 @@ real gh / goreleaser / cosign tools. **Total: 87 tests.**
   `Test - Release Scripts` job installs goreleaser + cosign at the
   same SHA-pinned versions goreleaser.yml uses, so the harness
   exercises the real surface.
+- Makefile carve-out for release PR heads — covered by
+  `tests/release-scripts/check-static-release-pr-tolerant.bats`.
 
 ## Running locally
 

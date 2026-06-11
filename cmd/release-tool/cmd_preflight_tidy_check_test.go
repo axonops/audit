@@ -354,13 +354,25 @@ func TestPreflightTidyCheck_MalformedAddedLineDoesNotSilentlyPass(t *testing.T) 
 func TestPreflightTidyCheck_DiffSizeCapAborts(t *testing.T) {
 	t.Parallel()
 	repo := makeTempRepo(t, map[string]string{"go.sum": ""})
-	// Write a go.sum bigger than the default 8 KiB cap.
-	big := strings.Repeat("a", 9000)
+	// Force a tiny cap and write a go.sum just above it. This
+	// tests the cap mechanism without depending on the
+	// (production) default value.
+	big := strings.Repeat("a", 200)
 	if err := writeFile(filepath.Join(repo, "go.sum"), big); err != nil {
 		t.Fatalf("write big go.sum: %v", err)
 	}
 	srv := fakeSumdb(t, nil)
-	code, stdout, _ := runSubcmd(t, repo, "v0.2.2", "github.com/axonops/audit", srv.URL, true)
+	outBuf := &bytes.Buffer{}
+	errBuf := &bytes.Buffer{}
+	code := runPreflightTidyCheck(context.Background(), []string{
+		"--workdir", repo,
+		"--last-released-version", "v0.2.2",
+		"--published-modules", "github.com/axonops/audit",
+		"--sumdb-endpoint", srv.URL,
+		"--skip-sumdb-cross-check",
+		"--max-diff-bytes", "100", // tiny cap — must trip
+	}, outBuf, errBuf, &rootFlags{})
+	stdout := outBuf.String()
 	if code != exitValidation {
 		t.Errorf("exit code: got %d want %d", code, exitValidation)
 	}

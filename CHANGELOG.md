@@ -51,6 +51,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Bump `preflight-tidy-check --max-diff-bytes` default from 8 KiB
+  to 64 KiB (#971).** v0.2.3's first dispatch (run 27361600829)
+  failed at `preflight-tidy` because the diff-size cap was tuned
+  per-module (~8 KiB) but the actual `make tidy` diff against 15
+  sub-module go.sum files is ~10–12 KiB. The error string is also
+  changed from `preflight-tidy: diff exceeds 8 KiB cap — aborting`
+  to `preflight-tidy: diff exceeds size cap — aborting` so future
+  cap bumps don't require lockstep edits to the AC + bats anchors.
 - **Fix release dispatch failing on post-tag go.sum drift via preflight-tidy job (#967).**
   v0.2.3's dispatch (`workflow_dispatch` run 27325930898) failed at
   the CI Gate's Hygiene job because main's `go.sum` carried v0.2.2's

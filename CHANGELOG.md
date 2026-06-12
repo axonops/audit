@@ -51,6 +51,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **`preflight-tidy-check` gate 1 now allows indirect-only go.mod
+  changes (#973).** v0.2.4's first dispatch (run 27370455797) failed
+  because tidy adjusted `// indirect` requires across 11 sub-module
+  `go.mod` files (transitive deps shifting after v0.2.2 — adding
+  `axonops/syncmap`, `golang.org/x/crypto`; removing `kr/text`).
+  These are routine Go-toolchain housekeeping, not engineering
+  changes, so gate 1 was over-rejecting them. The gate now classifies
+  every go.mod diff and rejects ONLY direct-require changes or
+  changes to `module` / `go` / `toolchain` / `replace` / `retract` /
+  `exclude` directives. The single `preflight-tidy: go.mod modified
+  — aborting` error string is replaced by two more-specific strings:
+  `preflight-tidy: go.mod direct require modified — aborting` and
+  `preflight-tidy: go.mod module/go/toolchain/replace directive
+  modified — aborting`. 7 new table-driven Go tests pin the
+  classification logic.
 - **Bump `preflight-tidy-check --max-diff-bytes` default from 8 KiB
   to 64 KiB (#971).** v0.2.3's first dispatch (run 27361600829)
   failed at `preflight-tidy` because the diff-size cap was tuned

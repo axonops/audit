@@ -48,7 +48,8 @@ type preflightTidyArgs struct {
 // bats grep assertions in tests/release-scripts/release-yml-grep.bats.
 const (
 	msgNoDrift             = "preflight-tidy: no drift to absorb"
-	msgGoModModified       = "preflight-tidy: go.mod modified — aborting"
+	msgGoModDirectRequire  = "preflight-tidy: go.mod direct require modified — aborting"
+	msgGoModDirective      = "preflight-tidy: go.mod module/go/toolchain/replace directive modified — aborting"
 	msgGoSumDeletions      = "preflight-tidy: go.sum lines deleted — aborting"
 	msgUnrelatedChecksums  = "preflight-tidy: unrelated checksum lines — aborting"
 	msgSumdbDisagrees      = "preflight-tidy: sum.golang.org disagrees — aborting"
@@ -123,6 +124,8 @@ func runPreflightTidyCheck(ctx context.Context, args []string, stdout, stderr io
 // working-tree diff produced by `make tidy`. Split out from the
 // flag-parsing path so tests can inject a faked sumdb endpoint and
 // workdir.
+//
+//nolint:gocyclo,cyclop // one branch per gate; flatter than helpers.
 func doPreflightTidyCheck(ctx context.Context, in *preflightTidyArgs, publishedModules []string, stdout, stderr io.Writer) int {
 	// Step 1 — capture the uncommitted diff.
 	diffBytes, code := captureDiff(in.workdir, stderr)
@@ -147,10 +150,20 @@ func doPreflightTidyCheck(ctx context.Context, in *preflightTidyArgs, publishedM
 		return exitOperational
 	}
 
-	// Gate 1 — go.sum only (no go.mod changes).
-	if hasGoModChange(files) {
-		emit(stdout, stderr, msgGoModModified)
+	// Gate 1 — go.mod changes classified. Indirect-only changes
+	// (transitive housekeeping after a release) are benign and
+	// allowed through. Direct-require changes and directive
+	// changes (`module`, `go`, `toolchain`, `replace`, etc.) are
+	// real engineering actions and rejected. #973.
+	switch classifyGoModChanges(files) {
+	case goModDirective:
+		emit(stdout, stderr, msgGoModDirective)
 		return exitValidation
+	case goModDirectRequire:
+		emit(stdout, stderr, msgGoModDirectRequire)
+		return exitValidation
+	case goModUnchanged, goModIndirectOnly:
+		// Pass through to gates 2+.
 	}
 
 	// Gate 2 — additions only (no deletions).
@@ -272,10 +285,114 @@ func parseUnifiedDiff(diff []byte) ([]fileDiff, error) {
 	return files, nil
 }
 
-// hasGoModChange reports true if any file in the diff is a go.mod.
-func hasGoModChange(files []fileDiff) bool {
+// goModChangeKind classifies what kind of change appeared in a
+// go.mod diff. Used by gate 1 to allow benign post-release
+// transitive-housekeeping changes while still rejecting real
+// engineering changes.
+type goModChangeKind int
+
+const (
+	// goModUnchanged: no go.mod file appears in the diff at all.
+	goModUnchanged goModChangeKind = iota
+	// goModIndirectOnly: every changed go.mod line is either
+	// structural (require (, ), blank, comment) or carries the
+	// `// indirect` suffix. These are the transitive-deps
+	// adjustments that tidy routinely makes after a release.
+	goModIndirectOnly
+	// goModDirectRequire: the diff includes at least one line
+	// that looks like a require directive WITHOUT `// indirect` —
+	// a real engineering change (new direct dep, version bump on
+	// existing direct dep, dep removal). Gate 1 rejects.
+	goModDirectRequire
+	// goModDirective: the diff includes a change to a top-level
+	// directive (`module`, `go`, `toolchain`, `replace`,
+	// `retract`, or `exclude`). Gate 1 rejects.
+	goModDirective
+)
+
+// classifyGoModChanges walks every go.mod file in the diff and
+// returns the STRONGEST signal across all of them: directive >
+// direct-require > indirect-only > unchanged. Gate 1 allows the
+// first two enum values and rejects the last two.
+//
+// The classifier is intentionally line-oriented (not a full
+// go.mod parser): every line of a `go mod tidy` diff is either a
+// known directive prefix, a require entry with or without
+// `// indirect`, or a structural marker. Anything that doesn't
+// match a known shape is treated as a directive change to fail
+// closed.
+//
+//nolint:gocognit // exhaustive switch over goModChangeKind; clearer inline.
+func classifyGoModChanges(files []fileDiff) goModChangeKind {
+	worst := goModUnchanged
 	for _, f := range files {
-		if isGoModPath(f.path) {
+		if !isGoModPath(f.path) {
+			continue
+		}
+		for _, line := range append(append([]string{}, f.additions...), f.deletions...) {
+			switch classifyGoModLine(line) {
+			case goModDirective:
+				// Strongest signal — short-circuit.
+				return goModDirective
+			case goModDirectRequire:
+				if worst < goModDirectRequire {
+					worst = goModDirectRequire
+				}
+			case goModIndirectOnly:
+				if worst < goModIndirectOnly {
+					worst = goModIndirectOnly
+				}
+			case goModUnchanged:
+				// Structural lines (require (, ), blank,
+				// in-block comment) are noise; ignore.
+			}
+		}
+	}
+	return worst
+}
+
+// classifyGoModLine returns the kind of change a single added or
+// deleted go.mod line represents. Whitespace is trimmed. The
+// classification is deliberately strict: an unrecognised shape
+// returns goModDirective so the gate fails closed.
+func classifyGoModLine(line string) goModChangeKind {
+	trim := strings.TrimSpace(line)
+	if trim == "" || trim == "require (" || trim == ")" {
+		return goModUnchanged
+	}
+	// In-block comment line: ignore.
+	if strings.HasPrefix(trim, "//") {
+		return goModUnchanged
+	}
+	// Block-form require body line: `<module> <version> [// indirect]`
+	// inside a `require (` block. If it carries `// indirect`,
+	// the line is benign; otherwise it's a direct require.
+	if !startsWithGoModDirective(trim) {
+		if strings.Contains(trim, "// indirect") {
+			return goModIndirectOnly
+		}
+		// Looks like a require body but no `// indirect` —
+		// direct dep.
+		return goModDirectRequire
+	}
+	// Single-line `require <module> <version> [// indirect]` form.
+	if rest, ok := strings.CutPrefix(trim, "require "); ok && !strings.HasPrefix(rest, "(") {
+		if strings.Contains(rest, "// indirect") {
+			return goModIndirectOnly
+		}
+		return goModDirectRequire
+	}
+	// Top-level directive (`module`, `go`, `toolchain`, `replace`,
+	// `retract`, `exclude`).
+	return goModDirective
+}
+
+// startsWithGoModDirective reports whether a trimmed go.mod line
+// begins with one of the recognised top-level directive keywords.
+// `require (` is considered structural and is handled above.
+func startsWithGoModDirective(trim string) bool {
+	for _, kw := range []string{"module ", "go ", "toolchain ", "replace ", "retract ", "exclude ", "require "} {
+		if strings.HasPrefix(trim, kw) {
 			return true
 		}
 	}

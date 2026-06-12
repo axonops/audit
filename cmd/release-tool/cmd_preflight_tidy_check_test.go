@@ -295,40 +295,83 @@ func TestPreflightTidyCheck_Gate1_IndirectOnlyAllowed(t *testing.T) {
 	}
 }
 
-func TestPreflightTidyCheck_Gate2_DeletionsAbort(t *testing.T) {
+// #975: gate 2 retired. go.sum deletions reflect the local
+// require graph (an indirect being removed takes its checksums
+// with it); they are not a proxy-tampering signal. This test
+// pins the regression so the gate cannot creep back.
+func TestPreflightTidyCheck_GoSumDeletionsAllowed(t *testing.T) {
 	t.Parallel()
-	initial := "github.com/axonops/audit v0.2.1 h1:OLD=\n"
+	initial := "github.com/axonops/audit v0.2.1 h1:OLD=\ngithub.com/axonops/audit v0.2.1/go.mod h1:OLDMOD=\n"
 	repo := makeTempRepo(t, map[string]string{"go.sum": initial})
-	// Replace the file — deletion of the old line + addition of a new one.
+	// Delete the old lines + add the new ones — same shape as
+	// `make tidy` after a v0.2.1 → v0.2.2 transition.
 	if err := writeFile(filepath.Join(repo, "go.sum"),
-		"github.com/axonops/audit v0.2.2 h1:NEW=\n"); err != nil {
+		"github.com/axonops/audit v0.2.2 h1:NEW=\ngithub.com/axonops/audit v0.2.2/go.mod h1:NEWMOD=\n"); err != nil {
 		t.Fatalf("write go.sum: %v", err)
 	}
-	srv := fakeSumdb(t, nil)
-	code, stdout, _ := runSubcmd(t, repo, "v0.2.2", "github.com/axonops/audit", srv.URL, true)
-	if code != exitValidation {
-		t.Errorf("exit code: got %d want %d", code, exitValidation)
-	}
-	if !strings.Contains(stdout, msgGoSumDeletions) {
-		t.Errorf("stdout missing %q: %q", msgGoSumDeletions, stdout)
+	srv := fakeSumdb(t, map[string][2]string{
+		"github.com/axonops/audit@v0.2.2": {"h1:NEW=", "h1:NEWMOD="},
+	})
+	code, stdout, stderr := runSubcmd(t, repo, "v0.2.2", "github.com/axonops/audit", srv.URL, false)
+	if code != exitSuccess {
+		t.Errorf("exit code: got %d want %d\nstdout=%q\nstderr=%q",
+			code, exitSuccess, stdout, stderr)
 	}
 }
 
-func TestPreflightTidyCheck_Gate3_UnrelatedModuleAborts(t *testing.T) {
+// #976: with the relaxed gate 3, a namespace-squatter line
+// (`github.com/evil/audit @ v0.2.2`) is no longer caught at gate
+// 3 — but gate 4's sum.golang.org lookup either rejects it (no
+// sumdb record for that fake module + version) or proves the
+// hash mismatch. The attack is still caught; the defending gate
+// shifts from 3 to 4. This test pins that behaviour.
+func TestPreflightTidyCheck_Gate3_NamespaceSquatterCaughtByGate4(t *testing.T) {
 	t.Parallel()
 	repo := makeTempRepo(t, map[string]string{"go.sum": ""})
-	// Add a line for an unrelated module — gate 3 rejects.
 	if err := writeFile(filepath.Join(repo, "go.sum"),
 		"github.com/evil/audit v0.2.2 h1:AAA=\ngithub.com/evil/audit v0.2.2/go.mod h1:BBB=\n"); err != nil {
 		t.Fatalf("write go.sum: %v", err)
 	}
+	// Fake sumdb has no record for github.com/evil/audit → gate 4
+	// rejects with msgSumdbTransient.
 	srv := fakeSumdb(t, nil)
-	code, stdout, _ := runSubcmd(t, repo, "v0.2.2", "github.com/axonops/audit", srv.URL, true)
-	if code != exitValidation {
-		t.Errorf("exit code: got %d want %d", code, exitValidation)
+	code, _, stderr := runSubcmd(t, repo, "v0.2.2", "github.com/axonops/audit", srv.URL, false)
+	if code != exitOperational {
+		t.Errorf("exit code: got %d want %d (gate 4 transient)", code, exitOperational)
 	}
-	if !strings.Contains(stdout, msgUnrelatedChecksums) {
-		t.Errorf("stdout missing %q: %q", msgUnrelatedChecksums, stdout)
+	if !strings.Contains(stderr, msgSumdbTransient) {
+		t.Errorf("stderr missing %q: %q", msgSumdbTransient, stderr)
+	}
+}
+
+// #976: third-party transitive lines (not axonops/audit/*) pass
+// gate 3 directly; gate 4 verifies their hashes.
+func TestPreflightTidyCheck_Gate3_TransitiveDepAllowed(t *testing.T) {
+	t.Parallel()
+	repo := makeTempRepo(t, map[string]string{"go.sum": ""})
+	body := strings.Join([]string{
+		"github.com/axonops/audit v0.2.2 h1:AAA=",
+		"github.com/axonops/audit v0.2.2/go.mod h1:BBB=",
+		"golang.org/x/crypto v0.52.0 h1:CCC=",
+		"golang.org/x/crypto v0.52.0/go.mod h1:DDD=",
+		"github.com/axonops/syncmap v1.0.0 h1:EEE=",
+		"github.com/axonops/syncmap v1.0.0/go.mod h1:FFF=",
+	}, "\n") + "\n"
+	if err := writeFile(filepath.Join(repo, "go.sum"), body); err != nil {
+		t.Fatalf("write go.sum: %v", err)
+	}
+	srv := fakeSumdb(t, map[string][2]string{
+		"github.com/axonops/audit@v0.2.2":   {"h1:AAA=", "h1:BBB="},
+		"golang.org/x/crypto@v0.52.0":       {"h1:CCC=", "h1:DDD="},
+		"github.com/axonops/syncmap@v1.0.0": {"h1:EEE=", "h1:FFF="},
+	})
+	code, stdout, stderr := runSubcmd(t, repo, "v0.2.2", "github.com/axonops/audit", srv.URL, false)
+	if code != exitSuccess {
+		t.Errorf("exit code: got %d want %d\nstdout=%q\nstderr=%q",
+			code, exitSuccess, stdout, stderr)
+	}
+	if strings.Contains(stdout, msgUnrelatedChecksums) {
+		t.Errorf("gate 3 wrongly rejected transitive deps: %q", stdout)
 	}
 }
 

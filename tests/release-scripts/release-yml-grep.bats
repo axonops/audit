@@ -391,12 +391,6 @@ setup() {
         "${REPO_ROOT}/cmd/release-tool/cmd_preflight_tidy_check.go"
 }
 
-@test "test_release_yml_preflight_tidy_rejects_deletions" {
-    # #967 gate 2: msgGoSumDeletions.
-    grep -qF 'preflight-tidy: go.sum lines deleted — aborting' \
-        "${REPO_ROOT}/cmd/release-tool/cmd_preflight_tidy_check.go"
-}
-
 @test "test_release_yml_preflight_tidy_cross_checks_sum_golang_org" {
     # #967 gate 4: sum.golang.org cross-check. Verify both the
     # workflow wires the sumdb endpoint AND the subcommand emits
@@ -441,7 +435,6 @@ setup() {
     grep -qF 'preflight-tidy: no drift to absorb' "$SUBCMD"
     grep -qF 'preflight-tidy: go.mod direct require modified — aborting' "$SUBCMD"
     grep -qF 'preflight-tidy: go.mod module/go/toolchain/replace directive modified — aborting' "$SUBCMD"
-    grep -qF 'preflight-tidy: go.sum lines deleted — aborting' "$SUBCMD"
     grep -qF 'preflight-tidy: unrelated checksum lines — aborting' "$SUBCMD"
     grep -qF 'preflight-tidy: sum.golang.org disagrees — aborting' "$SUBCMD"
     grep -qF 'preflight-tidy: sum.golang.org timeout or 5xx — aborting' "$SUBCMD"

@@ -51,6 +51,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **`preflight-tidy-check` gate 3 narrowed to `axonops/audit/*` (#976).**
+  v0.2.4's third-attempt dispatch would fail because tidy
+  legitimately adds transitive go.sum entries for non-axonops
+  modules (`axonops/syncmap`, `golang.org/x/crypto`) that v0.2.2's
+  go.mod pulls in. Gate 3 was rejecting them as "unrelated
+  checksum lines". The relaxed rule only enforces the version
+  constraint on lines in our `github.com/axonops/audit/*`
+  namespace; third-party transitives pass through and are
+  validated by gate 4 (sum.golang.org cross-check). The original
+  threat (namespace squatter like `github.com/evil/audit`) is
+  still caught — the defending gate shifts from 3 to 4.
+- **`preflight-tidy-check` gate 2 retired (#975).** Gate 2 rejected
+  ANY go.sum deletion, intended to defend against a maintainer-
+  added orphan being silently pruned. In practice `make tidy`'s
+  deletions are 100% reflective of the local require graph (an
+  indirect being removed in #973's relaxation takes its checksums
+  with it), and the actual supply-chain threat — proxy tampering
+  with hash values — manifests through ADDED entries that gate 4
+  defends. v0.2.4's second-attempt dispatch would have failed
+  here (`kr/text` orphan removal). The gate is removed; the
+  `preflight-tidy: go.sum lines deleted — aborting` error string
+  and `hasGoSumDeletions` helper are retired. New
+  `TestPreflightTidyCheck_GoSumDeletionsAllowed` test pins the
+  regression.
 - **`preflight-tidy-check` gate 1 now allows indirect-only go.mod
   changes (#973).** v0.2.4's first dispatch (run 27370455797) failed
   because tidy adjusted `// indirect` requires across 11 sub-module

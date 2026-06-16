@@ -51,6 +51,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **#957 release-PR-tolerant carve-out regex now matches series
+  branches (#983).** The release-tool creates `release/v<MAJOR>.<MINOR>.x`
+  series branches (literal `x` patch component), but #957's
+  regex `^release/v[0-9]+\.[0-9]+\.[0-9]+` required three integers
+  and missed this shape. Every release-prep PR's Hygiene check
+  failed `regen-schema-artifacts-check` / `ta-diff-check` and
+  required admin-merge. v0.2.4's release-prep PR (#982) hit this
+  exact failure mid-dispatch. The relaxed regex
+  `^release/v[0-9]+\.[0-9]+(\.[0-9]+|\.x)` matches both shapes.
+  New `test_*_skips_on_release_series_head_ref` bats anchors for
+  both Makefile targets.
 - **Root `go.mod` is now rewritten by the release `update-deps.sh`
   script (#984).** Previously the script skipped the core module
   (`scripts/release/update-deps.sh:53` carried

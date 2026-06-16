@@ -10,7 +10,11 @@ require (
 	pgregory.net/rapid v1.3.0
 )
 
-require github.com/axonops/audit/iouring v0.0.0-20260504172742-a7311e23b1c6 // indirect
+require (
+	github.com/axonops/audit/iouring v0.0.0-20260504172742-a7311e23b1c6 // indirect
+	github.com/axonops/syncmap v1.0.0 // indirect
+	golang.org/x/crypto v0.52.0 // indirect
+)
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect

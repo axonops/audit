@@ -3,8 +3,8 @@ module github.com/axonops/audit/splunk
 go 1.26.4
 
 require (
-	github.com/axonops/audit v0.2.4
-	github.com/axonops/audit/file v0.2.4
+	github.com/axonops/audit v0.2.5
+	github.com/axonops/audit/file v0.2.5
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/goleak v1.3.0
 	pgregory.net/rapid v1.3.0

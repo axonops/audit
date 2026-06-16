@@ -98,7 +98,14 @@ setup() {
     # Trigger an intentional invalid-skip error to extract the
     # valid list from goreleaser's error message — most reliable
     # source-of-truth across goreleaser versions.
-    valid_set="$(goreleaser release --skip=__cli_flag_validity_probe__ 2>&1 \
+    #
+    # #980 fix: goreleaser emits ANSI colour codes around `[ … ]`
+    # when running on a TTY (or whatever GHA tricks it into
+    # thinking is one). The codes break the `[][]` field
+    # separator. Force NO_COLOR=1 AND strip residual escapes
+    # before the awk parse.
+    valid_set="$(NO_COLOR=1 goreleaser release --skip=__cli_flag_validity_probe__ 2>&1 \
+                  | sed 's/\x1b\[[0-9;]*[mK]//g' \
                   | awk -F'[][]' '/Valid options for skip are/ {print $2}')"
 
     if [ -z "$valid_set" ]; then

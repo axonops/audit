@@ -50,7 +50,6 @@ const (
 	msgNoDrift             = "preflight-tidy: no drift to absorb"
 	msgGoModDirectRequire  = "preflight-tidy: go.mod direct require modified — aborting"
 	msgGoModDirective      = "preflight-tidy: go.mod module/go/toolchain/replace directive modified — aborting"
-	msgGoSumDeletions      = "preflight-tidy: go.sum lines deleted — aborting"
 	msgUnrelatedChecksums  = "preflight-tidy: unrelated checksum lines — aborting"
 	msgSumdbDisagrees      = "preflight-tidy: sum.golang.org disagrees — aborting"
 	msgSumdbTransient      = "preflight-tidy: sum.golang.org timeout or 5xx — aborting"
@@ -166,11 +165,14 @@ func doPreflightTidyCheck(ctx context.Context, in *preflightTidyArgs, publishedM
 		// Pass through to gates 2+.
 	}
 
-	// Gate 2 — additions only (no deletions).
-	if hasGoSumDeletions(files) {
-		emit(stdout, stderr, msgGoSumDeletions)
-		return exitValidation
-	}
+	// Gate 2 — RETIRED #975. The original gate rejected ANY go.sum
+	// deletion to defend against a maintainer-added orphan being
+	// silently pruned, but in practice tidy's deletions are 100%
+	// reflective of the local require graph (an indirect being
+	// dropped takes its checksums with it), and the actual
+	// supply-chain threat — proxy tampering with hash values —
+	// manifests through ADDED entries which gate 4 (sumdb cross-
+	// check) defends.
 
 	// Collect all added go.sum lines, scoped to go.sum paths only.
 	added := collectAddedGoSumLines(files)
@@ -399,22 +401,6 @@ func startsWithGoModDirective(trim string) bool {
 	return false
 }
 
-// hasGoSumDeletions reports true if any go.sum file has at least
-// one deletion line. tidy can prune orphaned checksums — but doing
-// so on a release dispatch could quietly drop a checksum a
-// maintainer added on purpose. Force human review.
-func hasGoSumDeletions(files []fileDiff) bool {
-	for _, f := range files {
-		if !isGoSumPath(f.path) {
-			continue
-		}
-		if len(f.deletions) > 0 {
-			return true
-		}
-	}
-	return false
-}
-
 // collectAddedGoSumLines returns the parsed addition lines from
 // every go.sum in the diff. Non-go.sum files (which gate 1 should
 // have rejected, but are skipped here defensively) are ignored.
@@ -465,25 +451,25 @@ func parseGoSumLine(line string) (parsedGoSumLine, bool) {
 	return out, true
 }
 
-// linesAreInExpectedSet enforces gate 3: every added go.sum line
-// must reference one of the publishedModules at the lastReleasedVersion.
-// Anything else — an unrelated module, an unexpected version, OR an
-// empty added set (signalling a silently-dropped malformed line; see
-// test-analyst review) — aborts the release.
+// linesAreInExpectedSet enforces gate 3 (relaxed by #976): for
+// every added go.sum line whose module path is in OUR namespace
+// (`github.com/axonops/audit/*`), the version MUST equal
+// lastReleasedVersion AND the module path MUST be in
+// publishedModules. Third-party transitive lines (golang.org/x/*,
+// axonops/syncmap, etc.) are NOT validated here; gate 4's
+// sum.golang.org cross-check covers them.
 //
-// This is a STRICTER interpretation than the "go mod graph
-// transitive set" originally proposed in the issue: in the v0.2.2 →
-// v0.2.3 case the drift is exclusively axonops/audit submodules at
-// the previously-published version. If a future release legitimately
-// needs transitive-dep checksums added, this gate will catch and
-// abort, forcing human review.
+// Before #976 the rule was "every line must be in publishedModules
+// at version" which rejected legitimate transitive additions and
+// blocked every release. The relaxed rule still catches the
+// original threat (a tampered axonops/audit/* line at a wrong
+// version, or a `github.com/evil/audit` namespace squatter via
+// gate 4's sumdb cross-check) while allowing the routine
+// transitive churn that comes with every upstream release.
 func linesAreInExpectedSet(added []parsedGoSumLine, publishedModules []string, version string) bool {
 	// Silent-bypass guard: a non-empty diff that parses to zero
 	// recognised go.sum lines means every line was malformed and
-	// silently dropped by parseGoSumLine. The caller's gate
-	// orchestration relies on this returning false so the run
-	// aborts with msgUnrelatedChecksums rather than passing every
-	// safety gate trivially.
+	// silently dropped by parseGoSumLine.
 	if len(added) == 0 {
 		return false
 	}
@@ -491,7 +477,13 @@ func linesAreInExpectedSet(added []parsedGoSumLine, publishedModules []string, v
 	for _, m := range publishedModules {
 		allowed[m] = struct{}{}
 	}
+	const ourNamespace = "github.com/axonops/audit"
 	for _, line := range added {
+		// Only enforce on our own modules. Third-party transitives
+		// are gate 4's responsibility.
+		if !isOurModule(line.module, ourNamespace) {
+			continue
+		}
 		if line.version != version {
 			return false
 		}
@@ -500,6 +492,17 @@ func linesAreInExpectedSet(added []parsedGoSumLine, publishedModules []string, v
 		}
 	}
 	return true
+}
+
+// isOurModule reports whether modulePath is the root or a
+// sub-module of `github.com/axonops/audit`. Strict prefix + boundary
+// check so `github.com/axonops/auditX` and
+// `github.com/axonops/audit-other` are NOT classified as ours.
+func isOurModule(modulePath, namespace string) bool {
+	if modulePath == namespace {
+		return true
+	}
+	return strings.HasPrefix(modulePath, namespace+"/")
 }
 
 // crossCheckAgainstSumdb enforces gate 4: every unique
@@ -651,13 +654,16 @@ DESCRIPTION
     operator-facing error strings declared in #967 AC #4.
 
 GATES
-    Gate 1 — go.sum only (no go.mod changes)
-    Gate 2 — additions only (no deletions)
-    Gate 3 — every added line references one of the published
-             modules at the last-released version
+    Gate 1 — go.mod changes classified: indirect-only adjustments
+             pass; direct require + module/go/toolchain/replace
+             directive changes reject (#973)
+    Gate 2 — RETIRED in #975 (deletions are benign orphan pruning).
+    Gate 3 — for axonops/audit/* added lines, the version must
+             equal --last-released-version (#976 relaxation: third-
+             party transitives pass; gate 4 verifies their hashes)
     Gate 4 — every (module, version) is independently fetched from
              sum.golang.org and the h1: hashes byte-match
-    Defence — diff size capped at 8 KiB; larger aborts.
+    Defence — diff size capped at 64 KiB; larger aborts.
 
 EXIT CODES
     0 — every gate passed; stdout lists validated (module, version)

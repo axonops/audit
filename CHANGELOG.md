@@ -51,6 +51,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Root `go.mod` is now rewritten by the release `update-deps.sh`
+  script (#984).** Previously the script skipped the core module
+  (`scripts/release/update-deps.sh:53` carried
+  `[[ "$dir" == "." ]] && continue` under a wrong "core has no
+  axonops/audit require directives" comment). In reality the root
+  module requires 7 published sub-modules directly plus 2 indirect.
+  v0.2.4 release shipped Go-module tags successfully but goreleaser
+  refused to build the GitHub Release artifacts + cosign bundle
+  because `make check-release-invariants` correctly flagged the
+  stale `v0.1.11` / `v0.0.0-pseudo` references that survived the
+  release-prep PR. The fix removes the `.` skip — root is now
+  rewritten the same way every other published module is. 7 new
+  bats tests in `tests/release-scripts/update-deps.bats` lock the
+  contract for the 5 supported require shapes (block-form,
+  pseudo-version, indirect suffix, single-line, mixed indentation)
+  plus a no-op regression anchor plus the latent `/go.mod` go.sum
+  sibling-line bug devops surfaced during the #984 review.
 - **`preflight-tidy-check` gate 3 narrowed to `axonops/audit/*` (#976).**
   v0.2.4's third-attempt dispatch would fail because tidy
   legitimately adds transitive go.sum entries for non-axonops

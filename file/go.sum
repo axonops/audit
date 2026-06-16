@@ -1,3 +1,5 @@
+github.com/axonops/audit v0.2.4 h1:mDZZzSfU1jImTl/lLYvOaGwg96SaMdDJgAr19C5QyhQ=
+github.com/axonops/audit v0.2.4/go.mod h1:utke4Y71RtS24e+bkRRgaQvyu6ht0anU61jxjcNdXIk=
 github.com/axonops/audit/iouring v0.0.0-20260504172742-a7311e23b1c6 h1:hSS66oOtqv3pduzG0rY3gNeAHDngWhVcjvJ3QIMfl+4=
 github.com/axonops/audit/iouring v0.0.0-20260504172742-a7311e23b1c6/go.mod h1:uOXtOGLXheRF1e3lQrTiCtTY0SipPH94czfKTv5sZsU=
 github.com/axonops/syncmap v1.0.0 h1:LioA4tccTuYsMG+i4XeJJ9tXsoxrbdiLCxUrUmQuN5o=

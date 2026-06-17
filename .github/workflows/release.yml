@@ -48,6 +48,15 @@ on:
         required: false
         type: number
         default: 45
+      # #988 fix: full PR CI (BDD + cross-platform) is ~25 min, so
+      # the previous 5-min poll always timed out on the first post-
+      # drift dispatch (v0.2.4, v0.2.5). Expose the deadline as an
+      # input so an operator can stretch it during slow CI windows.
+      preflight_tidy_timeout_minutes:
+        description: "Minutes preflight-tidy polls the auto-merge PR before timing out (default 30)"
+        required: false
+        type: number
+        default: 30
       # #967 escape hatch: when true, skips the preflight-tidy job
       # entirely. Use ONLY when an independent investigation has
       # confirmed go.sum drift is benign and sum.golang.org is
@@ -193,7 +202,12 @@ jobs:
   preflight-tidy:
     name: Preflight Tidy (#967)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # #988 fix: 40-min ceiling = ~5 min pre-poll work + 30-min poll
+    # default + 5-min buffer. Letting bash own the timeout via its
+    # deadline-based loop produces a well-formed "PR did not merge
+    # within N minutes" error; a too-tight ceiling races the bash
+    # deadline and surfaces a generic "operation was canceled".
+    timeout-minutes: 40
     needs: [preflight]
     if: github.event_name == 'workflow_dispatch'
     permissions:
@@ -323,6 +337,11 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           PUBLISH_VERSION: ${{ needs.preflight.outputs.version }}
+          # #988: poll budget — configurable via workflow_dispatch
+          # input. Full PR CI is ~25 min (BDD + cross-platform), so
+          # the 5-min default in #967 always timed out on the first
+          # post-drift dispatch. Default 30 covers the envelope.
+          PREFLIGHT_TIDY_TIMEOUT_MINUTES: ${{ inputs.preflight_tidy_timeout_minutes || 30 }}
         run: |
           set -euo pipefail
           BRANCH="chore/preflight-tidy-${PUBLISH_VERSION}"
@@ -366,17 +385,29 @@ jobs:
           # AC #4 exact string.
           echo "preflight-tidy: PR opened"
           echo "preflight-tidy: PR opened" >> "$GITHUB_STEP_SUMMARY"
-          # Brief poll loop — caps at 5 minutes so the rest of the
-          # release dispatch isn't blocked indefinitely on a stuck PR.
-          for i in $(seq 1 30); do
+          # #988 fix: deadline-based poll loop. Flat 30s cadence
+          # (matches the typical CI-check polling rate; no human in
+          # the loop so no need for the exponential backoff that
+          # wait-for-pr-merge uses). Short-circuit on CLOSED so a
+          # manually-closed PR surfaces an explicit error instead
+          # of silently consuming the full budget (mirrors
+          # wait-for-pr-merge's CLOSED handling).
+          deadline=$(( $(date +%s) + PREFLIGHT_TIDY_TIMEOUT_MINUTES * 60 ))
+          while [ "$(date +%s)" -lt "$deadline" ]; do
             state=$(gh pr view "$NUM" --json state --jq '.state')
-            if [ "$state" = "MERGED" ]; then
-              echo "preflight-tidy: PR #$NUM merged"
-              exit 0
-            fi
-            sleep 10
+            case "$state" in
+              MERGED)
+                echo "preflight-tidy: PR #$NUM merged"
+                exit 0
+                ;;
+              CLOSED)
+                echo "::error::preflight-tidy: PR #$NUM was closed without merging"
+                exit 1
+                ;;
+            esac
+            sleep 30
           done
-          echo "::error::preflight-tidy: PR #$NUM not merged within 5 minutes"
+          echo "::error::preflight-tidy: PR #$NUM not merged within $PREFLIGHT_TIDY_TIMEOUT_MINUTES minutes"
           exit 1
 
   # =====================================================================

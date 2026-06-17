@@ -668,6 +668,7 @@ every write operation; it does not consume a personal access token.
 | `version` | string | _(required)_ | Always — must be a valid `vX.Y.Z[-PRE]` tag |
 | `api_check_blocking` | bool | `false` | Flip to `true` after v1.0 (see "`api-check` transition" below) |
 | `merge_timeout_minutes` | number | `45` | Stretch when a slow reviewer window is expected during a high-stakes release. The `wait-for-pr-merge` job polls every 30s with exponential backoff to 120s; the timeout is the total budget. Operator-facing recovery snippet in the job summary uses the same value. (#927 MAJOR-3) |
+| `preflight_tidy_timeout_minutes` | number | `30` | Stretch when CI is unusually slow. The `preflight-tidy` job polls its auto-merge PR every 30s; total budget is this value. Default covers the typical ~25-min BDD + cross-platform CI envelope. Bumped from `5` (the v0.2.4 / v0.2.5 default that always timed out on the first post-drift dispatch). (#988) |
 
 ### `api-check` transition (advisory → blocking)
 
@@ -846,6 +847,15 @@ release workflow will pick up the merge and continue.
 ```bash
 gh pr review --approve <PR_NUMBER>
 ```
+
+#### preflight-tidy timed out waiting for its own auto-merge PR (30 min)
+
+The preflight-tidy auto-merge PR is still pending CI. Wait for it to
+merge, then re-dispatch `release.yml` with the same `version` — the
+second dispatch sees a tidy main and the preflight-tidy job exits with
+`preflight-tidy: no drift to absorb`. Alternatively, re-dispatch with
+`preflight_tidy_timeout_minutes=60` (or higher) for the slow-CI case.
+(#988)
 
 #### `wait-for-pr-merge` timed out (45 min) but the PR is still open
 

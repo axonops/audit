@@ -38,6 +38,17 @@ setup() {
     [[ "$output" == *"skipping on release PR head ref release/v1.0.0-rc.1"* ]]
 }
 
+# #983: the release-tool creates SERIES branches named
+# `release/v<MAJOR>.<MINOR>.x` (literal `x` for the patch). The
+# original #957 regex required three integers and missed this shape,
+# blocking every release-prep PR's Hygiene check with admin-merge
+# required. The relaxed regex now matches both shapes.
+@test "test_regen_schema_artifacts_check_skips_on_release_series_head_ref" {
+    GITHUB_HEAD_REF=release/v0.2.x run make -s regen-schema-artifacts-check
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"skipping on release PR head ref release/v0.2.x"* ]]
+}
+
 @test "test_regen_schema_artifacts_check_runs_on_unset_head_ref" {
     # Unset GITHUB_HEAD_REF (the GHA value on push, on dispatch,
     # or in a local invocation). The target must run the full check.
@@ -82,6 +93,14 @@ setup() {
     GITHUB_HEAD_REF=release/v1.0.0-rc.1 run make -s ta-diff-check
     [ "$status" -eq 0 ]
     [[ "$output" == *"skipping on release PR head ref release/v1.0.0-rc.1"* ]]
+}
+
+# #983: see regen-schema-artifacts-check counterpart above. Series
+# branch shape (`release/v<MAJOR>.<MINOR>.x`) must also skip.
+@test "test_ta_diff_check_skips_on_release_series_head_ref" {
+    GITHUB_HEAD_REF=release/v0.2.x run make -s ta-diff-check
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"skipping on release PR head ref release/v0.2.x"* ]]
 }
 
 @test "test_ta_diff_check_runs_on_unset_head_ref" {

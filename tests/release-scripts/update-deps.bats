@@ -139,3 +139,149 @@ EOF
     [ "$status" -eq 2 ]
     [[ "$output" =~ "produced no output" ]]
 }
+
+# --- #984: root go.mod is now in scope ---
+
+# The setup() above pre-seeds file/ and syslog/ but NOT the root
+# go.mod. Each of the 5 shape tests below writes its own root go.mod
+# fixture (file `$REPO_ROOT_TMP/go.mod`) into the repo, runs the
+# script, and asserts the fake `go` binary's recorded argv shows a
+# `go mod edit -require <path>@v0.2.5` call for the seeded path.
+
+@test "test_rewrites_v01x_block_form" {
+    # Block-form direct: tab-indented require body, normal semver.
+    cat > "$REPO_ROOT_TMP/go.mod" <<'EOF2'
+module github.com/axonops/audit
+
+go 1.26
+
+require (
+	github.com/axonops/audit/file v0.1.11
+)
+EOF2
+    run "$SCRIPT" "v0.2.5"
+    [ "$status" -eq 0 ]
+    args="$(args_of go)"
+    echo "$args" | grep -qF 'mod edit -require github.com/axonops/audit/file@v0.2.5'
+}
+
+@test "test_rewrites_v00_pseudo_version" {
+    # Block-form pseudo: v0.0.0-YYYYMMDDhhmmss-abcdef shape.
+    # Uses `audit/file` because the bats fake `make
+    # print-publish-modules` only knows `.`, `file`, and `syslog`;
+    # the SHAPE under test (pseudo version) is what matters.
+    cat > "$REPO_ROOT_TMP/go.mod" <<'EOF2'
+module github.com/axonops/audit
+
+go 1.26
+
+require (
+	github.com/axonops/audit/file v0.0.0-20260520183351-bad90dd00155
+)
+EOF2
+    run "$SCRIPT" "v0.2.5"
+    [ "$status" -eq 0 ]
+    args="$(args_of go)"
+    echo "$args" | grep -qF 'mod edit -require github.com/axonops/audit/file@v0.2.5'
+}
+
+@test "test_rewrites_indirect_suffix" {
+    # Block-form indirect: trailing ` // indirect` must be preserved
+    # by `go mod edit` (it parses the AST). The script must still
+    # detect the require line and emit the rewrite call. Path is
+    # `audit/syslog` because the bats fake knows it; the SHAPE
+    # under test is the `// indirect` suffix.
+    cat > "$REPO_ROOT_TMP/go.mod" <<'EOF2'
+module github.com/axonops/audit
+
+go 1.26
+
+require (
+	github.com/axonops/audit/syslog v0.1.11 // indirect
+)
+EOF2
+    run "$SCRIPT" "v0.2.5"
+    [ "$status" -eq 0 ]
+    args="$(args_of go)"
+    echo "$args" | grep -qF 'mod edit -require github.com/axonops/audit/syslog@v0.2.5'
+}
+
+@test "test_rewrites_single_line_require" {
+    # Single-line require: `require <path> <version>` at module
+    # scope (no parens).
+    cat > "$REPO_ROOT_TMP/go.mod" <<'EOF2'
+module github.com/axonops/audit
+
+go 1.26
+
+require github.com/axonops/audit/syslog v0.1.0
+EOF2
+    run "$SCRIPT" "v0.2.5"
+    [ "$status" -eq 0 ]
+    args="$(args_of go)"
+    echo "$args" | grep -qF 'mod edit -require github.com/axonops/audit/syslog@v0.2.5'
+}
+
+@test "test_rewrites_mixed_indentation" {
+    # Tab-indented + space-indented require lines in the same block.
+    # The regex `[[:space:]]*` covers both. `go mod edit` will
+    # canonicalise to tab in the output, but the script's job is
+    # only to call `go mod edit -require` — the existing fake-go
+    # records the call regardless of whatever Go does to the file.
+    # Both paths are in the bats fake's published_paths.
+    printf 'module github.com/axonops/audit\n\ngo 1.26\n\nrequire (\n\tgithub.com/axonops/audit/file v0.1.11\n    github.com/axonops/audit/syslog v0.1.11\n)\n' \
+        > "$REPO_ROOT_TMP/go.mod"
+    run "$SCRIPT" "v0.2.5"
+    [ "$status" -eq 0 ]
+    args="$(args_of go)"
+    echo "$args" | grep -qF 'mod edit -require github.com/axonops/audit/file@v0.2.5'
+    echo "$args" | grep -qF 'mod edit -require github.com/axonops/audit/syslog@v0.2.5'
+}
+
+@test "test_root_with_no_axonops_require_is_no_op" {
+    # Regression anchor (code-reviewer recommendation): if the root
+    # go.mod has no axonops/audit require lines, the script must
+    # visit the root target (`==> .` in stdout) but emit no
+    # `pinned` log lines while inside it. Other targets (file/ and
+    # syslog/) still get pinned — this asserts root processing is
+    # a true no-op when there's nothing to rewrite.
+    cat > "$REPO_ROOT_TMP/go.mod" <<'EOF2'
+module github.com/axonops/audit
+
+go 1.26
+
+require gopkg.in/yaml.v3 v3.0.1
+EOF2
+    run "$SCRIPT" "v0.2.5"
+    [ "$status" -eq 0 ]
+    # Root is visited.
+    [[ "$output" =~ "==> ." ]]
+    # Extract the root-section output: everything between `==> .`
+    # and the next `==> ` header. Assert no `  pinned ` line in it.
+    root_section="$(printf '%s\n' "$output" | awk '/^==> \./{f=1;next} /^==> /{f=0} f')"
+    if echo "$root_section" | grep -qE '^  pinned '; then
+        echo "Root section had unexpected pinned line:" >&2
+        echo "$root_section" >&2
+        return 1
+    fi
+}
+
+@test "test_strips_stale_go_mod_hash_lines_too" {
+    # devops MEDIUM finding folded into #984: the pre-fix sed
+    # pattern stripped `<path> ...` go.sum lines but missed the
+    # `<path>/go.mod ...` siblings, leaving the previous release's
+    # go.mod hash behind. Verify both are now removed.
+    mkdir -p "$REPO_ROOT_TMP/.dummy-scope-anchor" # ensure go.sum context
+    cat > "$REPO_ROOT_TMP/file/go.sum" <<'EOF2'
+github.com/axonops/audit v0.1.0 h1:fakehash=
+github.com/axonops/audit v0.1.0/go.mod h1:fakemodhash=
+github.com/axonops/audit/syslog v0.1.0 h1:fakehash=
+github.com/axonops/audit/syslog v0.1.0/go.mod h1:fakemodhash=
+EOF2
+    run "$SCRIPT" "v0.2.5"
+    [ "$status" -eq 0 ]
+    ! grep -qF "github.com/axonops/audit v0.1.0 " "$REPO_ROOT_TMP/file/go.sum"
+    ! grep -qF "github.com/axonops/audit v0.1.0/go.mod " "$REPO_ROOT_TMP/file/go.sum"
+    ! grep -qF "github.com/axonops/audit/syslog v0.1.0 " "$REPO_ROOT_TMP/file/go.sum"
+    ! grep -qF "github.com/axonops/audit/syslog v0.1.0/go.mod " "$REPO_ROOT_TMP/file/go.sum"
+}

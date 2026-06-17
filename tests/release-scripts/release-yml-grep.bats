@@ -380,19 +380,14 @@ setup() {
     echo "$body" | grep -qF "github.event_name == 'workflow_dispatch'"
 }
 
-@test "test_release_yml_preflight_tidy_enforces_go_sum_only" {
-    # #967 gate 1: msgGoModModified — see
-    # cmd/release-tool/cmd_preflight_tidy_check.go. The exact AC #4
-    # error string must be greppable in the workflow body or the
-    # subcommand wiring so a regression that mis-emits the string
-    # fails the grep.
-    grep -qF 'preflight-tidy: go.mod modified — aborting' \
+@test "test_release_yml_preflight_tidy_rejects_direct_require_changes" {
+    # #967 gate 1 (#973 refinement): the gate distinguishes
+    # direct-require changes (real engineering) from indirect-only
+    # adjustments (benign post-release housekeeping). Each
+    # rejection class has its own exact AC #4 error string.
+    grep -qF 'preflight-tidy: go.mod direct require modified — aborting' \
         "${REPO_ROOT}/cmd/release-tool/cmd_preflight_tidy_check.go"
-}
-
-@test "test_release_yml_preflight_tidy_rejects_deletions" {
-    # #967 gate 2: msgGoSumDeletions.
-    grep -qF 'preflight-tidy: go.sum lines deleted — aborting' \
+    grep -qF 'preflight-tidy: go.mod module/go/toolchain/replace directive modified — aborting' \
         "${REPO_ROOT}/cmd/release-tool/cmd_preflight_tidy_check.go"
 }
 
@@ -438,13 +433,13 @@ setup() {
     SUBCMD="${REPO_ROOT}/cmd/release-tool/cmd_preflight_tidy_check.go"
     # Strings the SUBCOMMAND emits (idempotent + validation paths).
     grep -qF 'preflight-tidy: no drift to absorb' "$SUBCMD"
-    grep -qF 'preflight-tidy: go.mod modified — aborting' "$SUBCMD"
-    grep -qF 'preflight-tidy: go.sum lines deleted — aborting' "$SUBCMD"
+    grep -qF 'preflight-tidy: go.mod direct require modified — aborting' "$SUBCMD"
+    grep -qF 'preflight-tidy: go.mod module/go/toolchain/replace directive modified — aborting' "$SUBCMD"
     grep -qF 'preflight-tidy: unrelated checksum lines — aborting' "$SUBCMD"
     grep -qF 'preflight-tidy: sum.golang.org disagrees — aborting' "$SUBCMD"
     grep -qF 'preflight-tidy: sum.golang.org timeout or 5xx — aborting' "$SUBCMD"
     # Diff-size-cap defence-in-depth string (test-analyst review).
-    grep -qF 'preflight-tidy: diff exceeds 8 KiB cap — aborting' "$SUBCMD"
+    grep -qF 'preflight-tidy: diff exceeds size cap — aborting' "$SUBCMD"
     # Strings the WORKFLOW emits (PR + skip paths).
     grep -qF 'preflight-tidy: PR opened' "$RELEASE_YML"
     grep -qF 'preflight-tidy: PR auto-merge refused — aborting' "$RELEASE_YML"

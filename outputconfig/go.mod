@@ -3,13 +3,13 @@ module github.com/axonops/audit/outputconfig
 go 1.26.4
 
 require (
-	github.com/axonops/audit v0.2.2
-	github.com/axonops/audit/file v0.2.2
-	github.com/axonops/audit/secrets v0.2.2
-	github.com/axonops/audit/secrets/env v0.2.2
-	github.com/axonops/audit/secrets/file v0.2.2
-	github.com/axonops/audit/secrets/openbao v0.2.2
-	github.com/axonops/audit/secrets/vault v0.2.2
+	github.com/axonops/audit v0.2.5
+	github.com/axonops/audit/file v0.2.5
+	github.com/axonops/audit/secrets v0.2.5
+	github.com/axonops/audit/secrets/env v0.2.5
+	github.com/axonops/audit/secrets/file v0.2.5
+	github.com/axonops/audit/secrets/openbao v0.2.5
+	github.com/axonops/audit/secrets/vault v0.2.5
 	github.com/cucumber/godog v0.15.1
 	github.com/goccy/go-yaml v1.19.2
 	github.com/stretchr/testify v1.11.1
@@ -18,6 +18,7 @@ require (
 
 require (
 	github.com/axonops/audit/iouring v0.0.0-20260504172742-a7311e23b1c6 // indirect
+	github.com/axonops/syncmap v1.0.0 // indirect
 	github.com/cucumber/gherkin/go/v26 v26.2.0 // indirect
 	github.com/cucumber/messages/go/v21 v21.0.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -27,5 +28,6 @@ require (
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
+	golang.org/x/crypto v0.52.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

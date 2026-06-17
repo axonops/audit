@@ -719,6 +719,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      # #980 fix: bats tests for the regen-schema-artifacts-check
+      # carve-out shell out to `go run ./cmd/audit-gen` which
+      # requires Go + workspace mode (cmd/audit-gen is a separate
+      # go.mod). Without these, the make target fails with
+      # "main module does not contain package
+      # github.com/axonops/audit/cmd/audit-gen" and the carve-out
+      # tests assert non-zero.
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up go.work for workspace-mode bats targets
+        run: make workspace
+
       # Install bats-core directly via its install script, pinned
       # to a specific commit so a compromised upstream cannot inject
       # CI-time code. The install script unpacks to ~/.local/{bin,

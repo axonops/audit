@@ -44,13 +44,22 @@ if (( ${#published_paths[@]} == 0 )); then
   exit 2
 fi
 
-# Modules to rewrite: every published module + the capstone example.
-# Skip the core module itself (`.`) — core has no axonops/audit
-# require directives to update.
+# Modules to rewrite: every published module (INCLUDING the root
+# `.`) + every example with its own go.mod. The root module's
+# go.mod requires 7 published sub-modules directly + 2 indirect
+# (see grep output of axonops/audit/ require lines in root go.mod
+# at any release boundary). Before #984, root was unconditionally
+# skipped here under a misleading comment that "core has no
+# axonops/audit require directives to update". That was wrong and
+# blocked v0.2.4's artifacts. The fix: the script now rewrites
+# root the same way it rewrites every other published module —
+# the per-target grep on line 107 naturally no-ops when no
+# axonops/audit require line is present, so re-introducing the
+# root module to the loop is safe even for modules that legitimately
+# have no cross-references.
 targets=()
 while IFS='|' read -r dir module_path tag_prefix; do
   [[ -z "$dir" ]] && continue
-  [[ "$dir" == "." ]] && continue
   targets+=("$dir")
 done < <(make -s --no-print-directory print-publish-modules)
 
@@ -104,6 +113,14 @@ for target in "${targets[@]}"; do
     # path is followed by whitespace + `v` + digit. Comment lines
     # are skipped because go.mod comments use `//` which doesn't
     # satisfy the path constraint here.
+    #
+    # Supported require shapes (all rewrite cleanly via the regex
+    # below + `go mod edit -require`):
+    #   1. Block-form direct:    `\tpath v0.1.11`
+    #   2. Block-form indirect:  `\tpath v0.1.11 // indirect`
+    #   3. Block-form pseudo:    `\tpath v0.0.0-YYYYMMDDhhmmss-abcdef`
+    #   4. Single-line:          `require path v0.1.11`
+    #   5. Mixed indentation:    `    path v0.1.11` (spaces or tabs)
     if grep -qE "^[[:space:]]*(require[[:space:]]+)?${path}[[:space:]]v[0-9]" go.mod; then
       go mod edit -require "${path}@${VERSION}"
       echo "  pinned $path → $VERSION"
@@ -112,9 +129,14 @@ for target in "${targets[@]}"; do
       # `go mod download` after the new tag publishes will re-add
       # the correct entries.
       if [[ -f go.sum ]]; then
-        # Match the path at the start of the line followed by space
-        # — same anchoring as above.
-        sed -i "/^${path//\//\\/} /d" go.sum
+        # Match the path at the start of the line followed by:
+        #   - a space (covers `path v0.1.11 h1:...`), OR
+        #   - `/go.mod ` (covers `path/go.mod v0.1.11 h1:...`)
+        # Pre-#984 the script only stripped the first form,
+        # leaving `path/go.mod` hash lines with the previous
+        # release's checksum (devops MEDIUM finding).
+        escaped_path="${path//\//\\/}"
+        sed -i "/^${escaped_path} /d; /^${escaped_path}\\/go\\.mod /d" go.sum
       fi
     fi
   done

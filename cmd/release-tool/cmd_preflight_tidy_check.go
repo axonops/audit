@@ -48,12 +48,12 @@ type preflightTidyArgs struct {
 // bats grep assertions in tests/release-scripts/release-yml-grep.bats.
 const (
 	msgNoDrift             = "preflight-tidy: no drift to absorb"
-	msgGoModModified       = "preflight-tidy: go.mod modified — aborting"
-	msgGoSumDeletions      = "preflight-tidy: go.sum lines deleted — aborting"
+	msgGoModDirectRequire  = "preflight-tidy: go.mod direct require modified — aborting"
+	msgGoModDirective      = "preflight-tidy: go.mod module/go/toolchain/replace directive modified — aborting"
 	msgUnrelatedChecksums  = "preflight-tidy: unrelated checksum lines — aborting"
 	msgSumdbDisagrees      = "preflight-tidy: sum.golang.org disagrees — aborting"
 	msgSumdbTransient      = "preflight-tidy: sum.golang.org timeout or 5xx — aborting"
-	msgDiffSizeCapExceeded = "preflight-tidy: diff exceeds 8 KiB cap — aborting"
+	msgDiffSizeCapExceeded = "preflight-tidy: diff exceeds size cap — aborting"
 )
 
 // runPreflightTidyCheck implements the `preflight-tidy-check`
@@ -82,7 +82,12 @@ func runPreflightTidyCheck(ctx context.Context, args []string, stdout, stderr io
 		"Last released version, e.g. v0.2.2 — gates 3+4 root their checks here (required)")
 	fs.StringVar(&in.publishedModulesCSV, "published-modules", "",
 		"Comma-separated list of github.com/axonops/audit/<sub> module paths to expect in the diff (required)")
-	fs.Int64Var(&in.maxDiffBytes, "max-diff-bytes", 8192,
+	// #971: default bumped 8 KiB → 64 KiB. The original 8 KiB was a
+	// per-module estimate from the #967 security review; the actual
+	// v0.2.2→v0.2.3 drift is ~10–12 KiB across 15 sub-module go.sum
+	// files. 64 KiB bounds a runaway-diff attack but accommodates
+	// expected drift for ~80 modules of headroom.
+	fs.Int64Var(&in.maxDiffBytes, "max-diff-bytes", 65536,
 		"Hard cap on total diff size in bytes; larger diffs abort with msgDiffSizeCapExceeded")
 	fs.StringVar(&in.sumdbEndpoint, "sumdb-endpoint", sumdb.DefaultEndpoint,
 		"Sigstore checksum database endpoint")
@@ -118,6 +123,8 @@ func runPreflightTidyCheck(ctx context.Context, args []string, stdout, stderr io
 // working-tree diff produced by `make tidy`. Split out from the
 // flag-parsing path so tests can inject a faked sumdb endpoint and
 // workdir.
+//
+//nolint:gocyclo,cyclop // one branch per gate; flatter than helpers.
 func doPreflightTidyCheck(ctx context.Context, in *preflightTidyArgs, publishedModules []string, stdout, stderr io.Writer) int {
 	// Step 1 — capture the uncommitted diff.
 	diffBytes, code := captureDiff(in.workdir, stderr)
@@ -142,17 +149,30 @@ func doPreflightTidyCheck(ctx context.Context, in *preflightTidyArgs, publishedM
 		return exitOperational
 	}
 
-	// Gate 1 — go.sum only (no go.mod changes).
-	if hasGoModChange(files) {
-		emit(stdout, stderr, msgGoModModified)
+	// Gate 1 — go.mod changes classified. Indirect-only changes
+	// (transitive housekeeping after a release) are benign and
+	// allowed through. Direct-require changes and directive
+	// changes (`module`, `go`, `toolchain`, `replace`, etc.) are
+	// real engineering actions and rejected. #973.
+	switch classifyGoModChanges(files) {
+	case goModDirective:
+		emit(stdout, stderr, msgGoModDirective)
 		return exitValidation
+	case goModDirectRequire:
+		emit(stdout, stderr, msgGoModDirectRequire)
+		return exitValidation
+	case goModUnchanged, goModIndirectOnly:
+		// Pass through to gates 2+.
 	}
 
-	// Gate 2 — additions only (no deletions).
-	if hasGoSumDeletions(files) {
-		emit(stdout, stderr, msgGoSumDeletions)
-		return exitValidation
-	}
+	// Gate 2 — RETIRED #975. The original gate rejected ANY go.sum
+	// deletion to defend against a maintainer-added orphan being
+	// silently pruned, but in practice tidy's deletions are 100%
+	// reflective of the local require graph (an indirect being
+	// dropped takes its checksums with it), and the actual
+	// supply-chain threat — proxy tampering with hash values —
+	// manifests through ADDED entries which gate 4 (sumdb cross-
+	// check) defends.
 
 	// Collect all added go.sum lines, scoped to go.sum paths only.
 	added := collectAddedGoSumLines(files)
@@ -267,26 +287,114 @@ func parseUnifiedDiff(diff []byte) ([]fileDiff, error) {
 	return files, nil
 }
 
-// hasGoModChange reports true if any file in the diff is a go.mod.
-func hasGoModChange(files []fileDiff) bool {
-	for _, f := range files {
-		if isGoModPath(f.path) {
-			return true
-		}
-	}
-	return false
-}
+// goModChangeKind classifies what kind of change appeared in a
+// go.mod diff. Used by gate 1 to allow benign post-release
+// transitive-housekeeping changes while still rejecting real
+// engineering changes.
+type goModChangeKind int
 
-// hasGoSumDeletions reports true if any go.sum file has at least
-// one deletion line. tidy can prune orphaned checksums — but doing
-// so on a release dispatch could quietly drop a checksum a
-// maintainer added on purpose. Force human review.
-func hasGoSumDeletions(files []fileDiff) bool {
+const (
+	// goModUnchanged: no go.mod file appears in the diff at all.
+	goModUnchanged goModChangeKind = iota
+	// goModIndirectOnly: every changed go.mod line is either
+	// structural (require (, ), blank, comment) or carries the
+	// `// indirect` suffix. These are the transitive-deps
+	// adjustments that tidy routinely makes after a release.
+	goModIndirectOnly
+	// goModDirectRequire: the diff includes at least one line
+	// that looks like a require directive WITHOUT `// indirect` —
+	// a real engineering change (new direct dep, version bump on
+	// existing direct dep, dep removal). Gate 1 rejects.
+	goModDirectRequire
+	// goModDirective: the diff includes a change to a top-level
+	// directive (`module`, `go`, `toolchain`, `replace`,
+	// `retract`, or `exclude`). Gate 1 rejects.
+	goModDirective
+)
+
+// classifyGoModChanges walks every go.mod file in the diff and
+// returns the STRONGEST signal across all of them: directive >
+// direct-require > indirect-only > unchanged. Gate 1 allows the
+// first two enum values and rejects the last two.
+//
+// The classifier is intentionally line-oriented (not a full
+// go.mod parser): every line of a `go mod tidy` diff is either a
+// known directive prefix, a require entry with or without
+// `// indirect`, or a structural marker. Anything that doesn't
+// match a known shape is treated as a directive change to fail
+// closed.
+//
+//nolint:gocognit // exhaustive switch over goModChangeKind; clearer inline.
+func classifyGoModChanges(files []fileDiff) goModChangeKind {
+	worst := goModUnchanged
 	for _, f := range files {
-		if !isGoSumPath(f.path) {
+		if !isGoModPath(f.path) {
 			continue
 		}
-		if len(f.deletions) > 0 {
+		for _, line := range append(append([]string{}, f.additions...), f.deletions...) {
+			switch classifyGoModLine(line) {
+			case goModDirective:
+				// Strongest signal — short-circuit.
+				return goModDirective
+			case goModDirectRequire:
+				if worst < goModDirectRequire {
+					worst = goModDirectRequire
+				}
+			case goModIndirectOnly:
+				if worst < goModIndirectOnly {
+					worst = goModIndirectOnly
+				}
+			case goModUnchanged:
+				// Structural lines (require (, ), blank,
+				// in-block comment) are noise; ignore.
+			}
+		}
+	}
+	return worst
+}
+
+// classifyGoModLine returns the kind of change a single added or
+// deleted go.mod line represents. Whitespace is trimmed. The
+// classification is deliberately strict: an unrecognised shape
+// returns goModDirective so the gate fails closed.
+func classifyGoModLine(line string) goModChangeKind {
+	trim := strings.TrimSpace(line)
+	if trim == "" || trim == "require (" || trim == ")" {
+		return goModUnchanged
+	}
+	// In-block comment line: ignore.
+	if strings.HasPrefix(trim, "//") {
+		return goModUnchanged
+	}
+	// Block-form require body line: `<module> <version> [// indirect]`
+	// inside a `require (` block. If it carries `// indirect`,
+	// the line is benign; otherwise it's a direct require.
+	if !startsWithGoModDirective(trim) {
+		if strings.Contains(trim, "// indirect") {
+			return goModIndirectOnly
+		}
+		// Looks like a require body but no `// indirect` —
+		// direct dep.
+		return goModDirectRequire
+	}
+	// Single-line `require <module> <version> [// indirect]` form.
+	if rest, ok := strings.CutPrefix(trim, "require "); ok && !strings.HasPrefix(rest, "(") {
+		if strings.Contains(rest, "// indirect") {
+			return goModIndirectOnly
+		}
+		return goModDirectRequire
+	}
+	// Top-level directive (`module`, `go`, `toolchain`, `replace`,
+	// `retract`, `exclude`).
+	return goModDirective
+}
+
+// startsWithGoModDirective reports whether a trimmed go.mod line
+// begins with one of the recognised top-level directive keywords.
+// `require (` is considered structural and is handled above.
+func startsWithGoModDirective(trim string) bool {
+	for _, kw := range []string{"module ", "go ", "toolchain ", "replace ", "retract ", "exclude ", "require "} {
+		if strings.HasPrefix(trim, kw) {
 			return true
 		}
 	}
@@ -343,25 +451,25 @@ func parseGoSumLine(line string) (parsedGoSumLine, bool) {
 	return out, true
 }
 
-// linesAreInExpectedSet enforces gate 3: every added go.sum line
-// must reference one of the publishedModules at the lastReleasedVersion.
-// Anything else — an unrelated module, an unexpected version, OR an
-// empty added set (signalling a silently-dropped malformed line; see
-// test-analyst review) — aborts the release.
+// linesAreInExpectedSet enforces gate 3 (relaxed by #976): for
+// every added go.sum line whose module path is in OUR namespace
+// (`github.com/axonops/audit/*`), the version MUST equal
+// lastReleasedVersion AND the module path MUST be in
+// publishedModules. Third-party transitive lines (golang.org/x/*,
+// axonops/syncmap, etc.) are NOT validated here; gate 4's
+// sum.golang.org cross-check covers them.
 //
-// This is a STRICTER interpretation than the "go mod graph
-// transitive set" originally proposed in the issue: in the v0.2.2 →
-// v0.2.3 case the drift is exclusively axonops/audit submodules at
-// the previously-published version. If a future release legitimately
-// needs transitive-dep checksums added, this gate will catch and
-// abort, forcing human review.
+// Before #976 the rule was "every line must be in publishedModules
+// at version" which rejected legitimate transitive additions and
+// blocked every release. The relaxed rule still catches the
+// original threat (a tampered axonops/audit/* line at a wrong
+// version, or a `github.com/evil/audit` namespace squatter via
+// gate 4's sumdb cross-check) while allowing the routine
+// transitive churn that comes with every upstream release.
 func linesAreInExpectedSet(added []parsedGoSumLine, publishedModules []string, version string) bool {
 	// Silent-bypass guard: a non-empty diff that parses to zero
 	// recognised go.sum lines means every line was malformed and
-	// silently dropped by parseGoSumLine. The caller's gate
-	// orchestration relies on this returning false so the run
-	// aborts with msgUnrelatedChecksums rather than passing every
-	// safety gate trivially.
+	// silently dropped by parseGoSumLine.
 	if len(added) == 0 {
 		return false
 	}
@@ -369,7 +477,13 @@ func linesAreInExpectedSet(added []parsedGoSumLine, publishedModules []string, v
 	for _, m := range publishedModules {
 		allowed[m] = struct{}{}
 	}
+	const ourNamespace = "github.com/axonops/audit"
 	for _, line := range added {
+		// Only enforce on our own modules. Third-party transitives
+		// are gate 4's responsibility.
+		if !isOurModule(line.module, ourNamespace) {
+			continue
+		}
 		if line.version != version {
 			return false
 		}
@@ -378,6 +492,17 @@ func linesAreInExpectedSet(added []parsedGoSumLine, publishedModules []string, v
 		}
 	}
 	return true
+}
+
+// isOurModule reports whether modulePath is the root or a
+// sub-module of `github.com/axonops/audit`. Strict prefix + boundary
+// check so `github.com/axonops/auditX` and
+// `github.com/axonops/audit-other` are NOT classified as ours.
+func isOurModule(modulePath, namespace string) bool {
+	if modulePath == namespace {
+		return true
+	}
+	return strings.HasPrefix(modulePath, namespace+"/")
 }
 
 // crossCheckAgainstSumdb enforces gate 4: every unique
@@ -529,13 +654,16 @@ DESCRIPTION
     operator-facing error strings declared in #967 AC #4.
 
 GATES
-    Gate 1 — go.sum only (no go.mod changes)
-    Gate 2 — additions only (no deletions)
-    Gate 3 — every added line references one of the published
-             modules at the last-released version
+    Gate 1 — go.mod changes classified: indirect-only adjustments
+             pass; direct require + module/go/toolchain/replace
+             directive changes reject (#973)
+    Gate 2 — RETIRED in #975 (deletions are benign orphan pruning).
+    Gate 3 — for axonops/audit/* added lines, the version must
+             equal --last-released-version (#976 relaxation: third-
+             party transitives pass; gate 4 verifies their hashes)
     Gate 4 — every (module, version) is independently fetched from
              sum.golang.org and the h1: hashes byte-match
-    Defence — diff size capped at 8 KiB; larger aborts.
+    Defence — diff size capped at 64 KiB; larger aborts.
 
 EXIT CODES
     0 — every gate passed; stdout lists validated (module, version)

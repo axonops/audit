@@ -386,7 +386,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
-    timeout-minutes: 15
+    # 25 minutes (was 15): the Windows runner's post-job `tar` of the Go
+    # module/build cache repeatedly runs ~5 minutes, and pushes the job
+    # past the 15-minute timeout (observed on PR #991). The tests
+    # themselves complete in well under 10 minutes.
+    timeout-minutes: 25
     needs: [test, changes]
     if: needs.changes.outputs.code == 'true'
     strategy:

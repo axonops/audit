@@ -11,6 +11,7 @@ require (
 )
 
 require (
+	github.com/axonops/audit/iouring v0.0.0-20260617162209-01b27a0cf88d // indirect
 	github.com/axonops/syncmap v1.0.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect

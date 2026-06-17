@@ -1,3 +1,5 @@
+github.com/axonops/audit v0.2.5 h1:UoQKKzIIPPBukNSWUTruvKFf4AKxKVFB9KuR0UtbSqQ=
+github.com/axonops/audit v0.2.5/go.mod h1:tyzZrrhxYAbTyPB/JHZsZCtWZrkfg6hhoLjv1fdx3Kg=
 github.com/axonops/syncmap v1.0.0 h1:LioA4tccTuYsMG+i4XeJJ9tXsoxrbdiLCxUrUmQuN5o=
 github.com/axonops/syncmap v1.0.0/go.mod h1:UzPuU30i9SaKB5xYEbkYuuuXcy1yrasWfv+1oZnuVCs=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=

@@ -413,6 +413,17 @@ setup() {
     echo "$body" | grep -qF -- '--auto --squash'
     echo "$body" | grep -qF 'preflight-tidy: PR opened'
     echo "$body" | grep -qF 'preflight-tidy: PR auto-merge refused — aborting'
+    # #988: poll-budget input declared at workflow scope (asserted
+    # against $RELEASE_YML, not $body — the input block is OUTSIDE
+    # the preflight-tidy job awk range).
+    grep -qF 'preflight_tidy_timeout_minutes:' "$RELEASE_YML"
+    # #988: poll uses the configurable env var (not hardcoded 5min).
+    # Asserts both the env-var name AND the fallback default to lock
+    # the wiring; the literal poll-iteration count is intentionally
+    # NOT asserted so a future operator default-bump doesn't break
+    # the test.
+    echo "$body" | grep -qF 'PREFLIGHT_TIDY_TIMEOUT_MINUTES'
+    echo "$body" | grep -qF 'inputs.preflight_tidy_timeout_minutes || 30'
 }
 
 @test "test_release_yml_preflight_tidy_honours_skip_input" {

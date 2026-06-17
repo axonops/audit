@@ -51,6 +51,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **preflight-tidy now waits 30 min for its auto-merge PR by default,
+  configurable via `preflight_tidy_timeout_minutes` (#988).** Full PR
+  CI (BDD + cross-platform) takes ~25 min, so the previous 5-min poll
+  (`for i in $(seq 1 30); do … sleep 10; done`) always timed out on
+  the first post-drift dispatch — v0.2.4 and v0.2.5 hit this exact
+  failure mode and both required a manual re-dispatch. The poll loop
+  is now deadline-based (60 × 30s by default, configurable via the
+  new workflow_dispatch input), short-circuits on `CLOSED` state
+  (mirrors the `wait-for-pr-merge` pattern), and the job-level
+  `timeout-minutes` is lifted from 15 → 40 so the bash deadline owns
+  the failure mode and produces a well-formed "PR did not merge
+  within N minutes" error instead of a generic
+  "operation was canceled". Two new bats anchors in
+  `tests/release-scripts/release-yml-grep.bats` lock the wiring
+  (input declaration + env-var pattern). Recovery playbook in
+  `docs/releasing.md` documents the new override.
 - **#957 release-PR-tolerant carve-out regex now matches series
   branches (#983).** The release-tool creates `release/v<MAJOR>.<MINOR>.x`
   series branches (literal `x` patch component), but #957's

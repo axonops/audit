@@ -1139,7 +1139,7 @@ regen-schema-artifacts:
 # in full. See `docs/releasing.md` § Troubleshooting.
 .PHONY: regen-schema-artifacts-check
 regen-schema-artifacts-check:
-	@if echo "$${GITHUB_HEAD_REF:-}" | grep -qE '^release/v[0-9]+\.[0-9]+\.[0-9]+'; then \
+	@if echo "$${GITHUB_HEAD_REF:-}" | grep -qE '^release/v[0-9]+\.[0-9]+(\.[0-9]+|\.x)'; then \
 		echo "regen-schema-artifacts-check: skipping on release PR head ref $$GITHUB_HEAD_REF (#957)"; \
 		exit 0; \
 	fi; \
@@ -1207,7 +1207,7 @@ ta:
 # safe. The non-release path still runs the check.
 .PHONY: ta-diff-check
 ta-diff-check:
-	@if echo "$${GITHUB_HEAD_REF:-}" | grep -qE '^release/v[0-9]+\.[0-9]+\.[0-9]+'; then \
+	@if echo "$${GITHUB_HEAD_REF:-}" | grep -qE '^release/v[0-9]+\.[0-9]+(\.[0-9]+|\.x)'; then \
 		echo "ta-diff-check: skipping on release PR head ref $$GITHUB_HEAD_REF (#957)"; \
 		exit 0; \
 	fi

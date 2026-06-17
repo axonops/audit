@@ -51,6 +51,81 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **#957 release-PR-tolerant carve-out regex now matches series
+  branches (#983).** The release-tool creates `release/v<MAJOR>.<MINOR>.x`
+  series branches (literal `x` patch component), but #957's
+  regex `^release/v[0-9]+\.[0-9]+\.[0-9]+` required three integers
+  and missed this shape. Every release-prep PR's Hygiene check
+  failed `regen-schema-artifacts-check` / `ta-diff-check` and
+  required admin-merge. v0.2.4's release-prep PR (#982) hit this
+  exact failure mid-dispatch. The relaxed regex
+  `^release/v[0-9]+\.[0-9]+(\.[0-9]+|\.x)` matches both shapes.
+  New `test_*_skips_on_release_series_head_ref` bats anchors for
+  both Makefile targets.
+- **Root `go.mod` is now rewritten by the release `update-deps.sh`
+  script (#984).** Previously the script skipped the core module
+  (`scripts/release/update-deps.sh:53` carried
+  `[[ "$dir" == "." ]] && continue` under a wrong "core has no
+  axonops/audit require directives" comment). In reality the root
+  module requires 7 published sub-modules directly plus 2 indirect.
+  v0.2.4 release shipped Go-module tags successfully but goreleaser
+  refused to build the GitHub Release artifacts + cosign bundle
+  because `make check-release-invariants` correctly flagged the
+  stale `v0.1.11` / `v0.0.0-pseudo` references that survived the
+  release-prep PR. The fix removes the `.` skip — root is now
+  rewritten the same way every other published module is. 7 new
+  bats tests in `tests/release-scripts/update-deps.bats` lock the
+  contract for the 5 supported require shapes (block-form,
+  pseudo-version, indirect suffix, single-line, mixed indentation)
+  plus a no-op regression anchor plus the latent `/go.mod` go.sum
+  sibling-line bug devops surfaced during the #984 review.
+- **`preflight-tidy-check` gate 3 narrowed to `axonops/audit/*` (#976).**
+  v0.2.4's third-attempt dispatch would fail because tidy
+  legitimately adds transitive go.sum entries for non-axonops
+  modules (`axonops/syncmap`, `golang.org/x/crypto`) that v0.2.2's
+  go.mod pulls in. Gate 3 was rejecting them as "unrelated
+  checksum lines". The relaxed rule only enforces the version
+  constraint on lines in our `github.com/axonops/audit/*`
+  namespace; third-party transitives pass through and are
+  validated by gate 4 (sum.golang.org cross-check). The original
+  threat (namespace squatter like `github.com/evil/audit`) is
+  still caught — the defending gate shifts from 3 to 4.
+- **`preflight-tidy-check` gate 2 retired (#975).** Gate 2 rejected
+  ANY go.sum deletion, intended to defend against a maintainer-
+  added orphan being silently pruned. In practice `make tidy`'s
+  deletions are 100% reflective of the local require graph (an
+  indirect being removed in #973's relaxation takes its checksums
+  with it), and the actual supply-chain threat — proxy tampering
+  with hash values — manifests through ADDED entries that gate 4
+  defends. v0.2.4's second-attempt dispatch would have failed
+  here (`kr/text` orphan removal). The gate is removed; the
+  `preflight-tidy: go.sum lines deleted — aborting` error string
+  and `hasGoSumDeletions` helper are retired. New
+  `TestPreflightTidyCheck_GoSumDeletionsAllowed` test pins the
+  regression.
+- **`preflight-tidy-check` gate 1 now allows indirect-only go.mod
+  changes (#973).** v0.2.4's first dispatch (run 27370455797) failed
+  because tidy adjusted `// indirect` requires across 11 sub-module
+  `go.mod` files (transitive deps shifting after v0.2.2 — adding
+  `axonops/syncmap`, `golang.org/x/crypto`; removing `kr/text`).
+  These are routine Go-toolchain housekeeping, not engineering
+  changes, so gate 1 was over-rejecting them. The gate now classifies
+  every go.mod diff and rejects ONLY direct-require changes or
+  changes to `module` / `go` / `toolchain` / `replace` / `retract` /
+  `exclude` directives. The single `preflight-tidy: go.mod modified
+  — aborting` error string is replaced by two more-specific strings:
+  `preflight-tidy: go.mod direct require modified — aborting` and
+  `preflight-tidy: go.mod module/go/toolchain/replace directive
+  modified — aborting`. 7 new table-driven Go tests pin the
+  classification logic.
+- **Bump `preflight-tidy-check --max-diff-bytes` default from 8 KiB
+  to 64 KiB (#971).** v0.2.3's first dispatch (run 27361600829)
+  failed at `preflight-tidy` because the diff-size cap was tuned
+  per-module (~8 KiB) but the actual `make tidy` diff against 15
+  sub-module go.sum files is ~10–12 KiB. The error string is also
+  changed from `preflight-tidy: diff exceeds 8 KiB cap — aborting`
+  to `preflight-tidy: diff exceeds size cap — aborting` so future
+  cap bumps don't require lockstep edits to the AC + bats anchors.
 - **Fix release dispatch failing on post-tag go.sum drift via preflight-tidy job (#967).**
   v0.2.3's dispatch (`workflow_dispatch` run 27325930898) failed at
   the CI Gate's Hygiene job because main's `go.sum` carried v0.2.2's

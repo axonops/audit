@@ -325,16 +325,12 @@ then `go build` inside the container doesn't see a `go.work`
 unless it's also copied — which it shouldn't be, because that
 would let the Docker image bake in unreleased local changes.
 
-Concrete examples in the repo:
+Concrete example in the repo:
 
 - **`examples/21-capstone/Dockerfile`** copies its own
   `go.mod` / `go.sum` and runs `go build` against
   proxy.golang.org versions. The local workspace is invisible
   to the build.
-- **`cmd/audit-gen`** ships an OCI image via the unified
-  release flow (#610). The image's `audit-gen` binary is
-  built by GoReleaser against the just-tagged release version,
-  not against any developer's workspace.
 
 If you edit a sub-module and want to test the change inside
 the capstone container, you have three options, ordered by

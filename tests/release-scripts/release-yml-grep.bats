@@ -285,3 +285,171 @@ setup() {
     grep -qF 'cache-dependency-path: cmd/release-tool/go.sum' "$ACTION"
     grep -qF 'go-version-file: cmd/release-tool/go.mod' "$ACTION"
 }
+
+# --- #956 — goreleaser/verify/invariants run on push:tag recovery ---
+
+@test "test_release_yml_goreleaser_uses_if_always" {
+    # #956 fix: without `always() && needs.X.result == 'success' && ...`
+    # the implicit "all needs must succeed" gate treats the *skipped*
+    # workflow_dispatch-only upstreams as not-yet-success on the
+    # push:tag path, so goreleaser silently skips. v0.2.2's push:tag
+    # run 27181087721 hit exactly this. Verify the goreleaser job's
+    # body contains `always() &&` and gates on preflight + tag-all.
+    body=$(awk '/^  goreleaser:/,/^  verify:/' "$RELEASE_YML")
+    echo "$body" | grep -qF 'always() &&'
+    echo "$body" | grep -qF "needs.preflight.result == 'success'"
+    echo "$body" | grep -qF "needs.tag-all.result == 'success'"
+}
+
+@test "test_release_yml_verify_uses_if_always" {
+    # Same rationale as goreleaser above (#956). The verify job
+    # gates on goreleaser succeeding; without `always() && ...` it
+    # cascade-skipped on the push:tag path.
+    body=$(awk '/^  verify:/,/^  invariants:/' "$RELEASE_YML")
+    echo "$body" | grep -qF 'always() &&'
+    echo "$body" | grep -qF "needs.preflight.result == 'success'"
+    echo "$body" | grep -qF "needs.goreleaser.result == 'success'"
+}
+
+@test "test_release_yml_invariants_uses_if_always" {
+    # The post-release sanity gate (#956). Must run on every
+    # successful end-to-end release, including push:tag recovery.
+    # Extract from `invariants:` to the next top-level job header
+    # (`post-release-tidy:` since #959 inserted the new job between
+    # invariants and summary).
+    body=$(awk '/^  invariants:/,/^  post-release-tidy:/' "$RELEASE_YML")
+    echo "$body" | grep -qF 'always() &&'
+    echo "$body" | grep -qF "needs.preflight.result == 'success'"
+    echo "$body" | grep -qF "needs.tag-all.result == 'success'"
+    echo "$body" | grep -qF "needs.verify.result == 'success'"
+}
+
+# --- #959 — post-release auto-tidy ---
+
+@test "test_release_yml_post_release_tidy_step_exists" {
+    # #959: after tag-all publishes the v* tags, every sub-module's
+    # go.sum gains entries for the just-published version. Without
+    # an auto-tidy step, main's Hygiene tidy-check fails IMMEDIATELY
+    # post-release and every fix PR has to be admin-merged. The job
+    # runs `make tidy` against main, App-signs the diff via
+    # release-tool commit-pinned-deps, and opens an auto-merge PR.
+    body=$(awk '/^  post-release-tidy:/,/^  summary:/' "$RELEASE_YML")
+    # Job name is the documented anchor for #959.
+    echo "$body" | grep -qF 'post-release-tidy:'
+    # The job must run `make tidy` (the actual fix step).
+    echo "$body" | grep -qF 'run: make tidy'
+    # No-diff path is a clean exit, not a failure.
+    echo "$body" | grep -qF 'no post-release drift to absorb'
+    # Uses the existing release-tool commit-pinned-deps subcommand —
+    # its allowlist already covers go.mod + go.sum, which is exactly
+    # the post-tidy diff surface.
+    echo "$body" | grep -qF 'commit-pinned-deps'
+    # Branch name pattern (#959 documented anchor).
+    echo "$body" | grep -qF 'chore/post-release-tidy-'
+    # #956 pattern — explicit always() gate so push:tag also runs
+    # this job.
+    echo "$body" | grep -qF 'always() &&'
+    echo "$body" | grep -qF "needs.invariants.result == 'success'"
+    # Summary table must list the new job's result.
+    grep -qF 'needs.post-release-tidy.result' "$RELEASE_YML"
+    # Summary `needs:` list must include post-release-tidy.
+    awk '/^  summary:/,/^[^[:space:]]/' "$RELEASE_YML" | grep -qE '^[[:space:]]+- post-release-tidy$'
+}
+
+# --- #967 — preflight-tidy self-healing on go.sum drift ---
+
+@test "test_release_yml_preflight_tidy_job_exists" {
+    # #967 fix: the preflight-tidy job mirrors post-release-tidy
+    # (#959/#966) on the PRE-side of the release flow. v0.2.3's
+    # dispatch (run 27325930898) failed because main's go.sum
+    # carried v0.2.2's post-tag drift residue; this job runs
+    # `make tidy` and absorbs the diff via release-tool's existing
+    # commit-pinned-deps subcommand.
+    body=$(awk '/^  preflight-tidy:/,/^  ci:/' "$RELEASE_YML")
+    echo "$body" | grep -qF 'preflight-tidy:'
+    echo "$body" | grep -qF 'run: make tidy'
+    echo "$body" | grep -qF 'preflight-tidy-check'
+    echo "$body" | grep -qF 'commit-pinned-deps'
+    echo "$body" | grep -qF 'chore/preflight-tidy-'
+}
+
+@test "test_release_yml_preflight_tidy_gated_on_workflow_dispatch" {
+    # #967: the recovery push:tag path assumes a clean tag-commit
+    # state; preflight-tidy is workflow_dispatch only.
+    body=$(awk '/^  preflight-tidy:/,/^  ci:/' "$RELEASE_YML")
+    echo "$body" | grep -qF "github.event_name == 'workflow_dispatch'"
+}
+
+@test "test_release_yml_preflight_tidy_rejects_direct_require_changes" {
+    # #967 gate 1 (#973 refinement): the gate distinguishes
+    # direct-require changes (real engineering) from indirect-only
+    # adjustments (benign post-release housekeeping). Each
+    # rejection class has its own exact AC #4 error string.
+    grep -qF 'preflight-tidy: go.mod direct require modified — aborting' \
+        "${REPO_ROOT}/cmd/release-tool/cmd_preflight_tidy_check.go"
+    grep -qF 'preflight-tidy: go.mod module/go/toolchain/replace directive modified — aborting' \
+        "${REPO_ROOT}/cmd/release-tool/cmd_preflight_tidy_check.go"
+}
+
+@test "test_release_yml_preflight_tidy_cross_checks_sum_golang_org" {
+    # #967 gate 4: sum.golang.org cross-check. Verify both the
+    # workflow wires the sumdb endpoint AND the subcommand emits
+    # the AC #4 disagree + transient strings.
+    body=$(awk '/^  preflight-tidy:/,/^  ci:/' "$RELEASE_YML")
+    echo "$body" | grep -qF 'https://sum.golang.org'
+    grep -qF 'preflight-tidy: sum.golang.org disagrees — aborting' \
+        "${REPO_ROOT}/cmd/release-tool/cmd_preflight_tidy_check.go"
+    grep -qF 'preflight-tidy: sum.golang.org timeout or 5xx — aborting' \
+        "${REPO_ROOT}/cmd/release-tool/cmd_preflight_tidy_check.go"
+}
+
+@test "test_release_yml_preflight_tidy_opens_auto_merge_pr" {
+    # #967 gate 5: PR-not-direct-push. The workflow must use
+    # release-tool's App-signed commit-pinned-deps subcommand,
+    # then gh pr create + gh pr merge --auto.
+    body=$(awk '/^  preflight-tidy:/,/^  ci:/' "$RELEASE_YML")
+    echo "$body" | grep -qF 'commit-pinned-deps'
+    echo "$body" | grep -qF 'gh pr create'
+    echo "$body" | grep -qF -- '--auto --squash'
+    echo "$body" | grep -qF 'preflight-tidy: PR opened'
+    echo "$body" | grep -qF 'preflight-tidy: PR auto-merge refused — aborting'
+}
+
+@test "test_release_yml_preflight_tidy_honours_skip_input" {
+    # #967 gate 6: inputs.skip_preflight_tidy escape hatch. The
+    # workflow must declare the input AND emit the AC #4 string
+    # when set, plus surface a ::warning:: and a GFM CAUTION block.
+    grep -qF 'skip_preflight_tidy:' "$RELEASE_YML"
+    body=$(awk '/^  preflight-tidy:/,/^  ci:/' "$RELEASE_YML")
+    echo "$body" | grep -qF 'preflight-tidy: skipped via skip_preflight_tidy input'
+    echo "$body" | grep -qF '::warning::'
+    echo "$body" | grep -qF '[!CAUTION]'
+}
+
+@test "test_release_yml_preflight_tidy_emits_exact_error_strings" {
+    # Property-style: every AC #4 exact string must appear at least
+    # once in the workflow body OR the subcommand source. Any miss
+    # means the operator-facing contract is broken.
+    SUBCMD="${REPO_ROOT}/cmd/release-tool/cmd_preflight_tidy_check.go"
+    # Strings the SUBCOMMAND emits (idempotent + validation paths).
+    grep -qF 'preflight-tidy: no drift to absorb' "$SUBCMD"
+    grep -qF 'preflight-tidy: go.mod direct require modified — aborting' "$SUBCMD"
+    grep -qF 'preflight-tidy: go.mod module/go/toolchain/replace directive modified — aborting' "$SUBCMD"
+    grep -qF 'preflight-tidy: unrelated checksum lines — aborting' "$SUBCMD"
+    grep -qF 'preflight-tidy: sum.golang.org disagrees — aborting' "$SUBCMD"
+    grep -qF 'preflight-tidy: sum.golang.org timeout or 5xx — aborting' "$SUBCMD"
+    # Diff-size-cap defence-in-depth string (test-analyst review).
+    grep -qF 'preflight-tidy: diff exceeds size cap — aborting' "$SUBCMD"
+    # Strings the WORKFLOW emits (PR + skip paths).
+    grep -qF 'preflight-tidy: PR opened' "$RELEASE_YML"
+    grep -qF 'preflight-tidy: PR auto-merge refused — aborting' "$RELEASE_YML"
+    grep -qF 'preflight-tidy: skipped via skip_preflight_tidy input' "$RELEASE_YML"
+}
+
+@test "test_release_yml_preflight_tidy_in_summary_needs" {
+    # AC #6: summary lists preflight-tidy in needs and its result
+    # in the status table.
+    awk '/^  summary:/,/^[^[:space:]]/' "$RELEASE_YML" \
+        | grep -qE '^[[:space:]]+- preflight-tidy$'
+    grep -qF 'needs.preflight-tidy.result' "$RELEASE_YML"
+}

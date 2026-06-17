@@ -27,9 +27,14 @@ scaffolding.
 | **Total** | — | **44** |
 
 Plus three meta-tests for the fixture stub binaries
-(`fixtures/bin/{go,git,make}`) and 24 grep-based regression tests
-for `.github/workflows/release.yml` + the composite action at
-`.github/actions/build-release-tool/`. **Total: 74 tests.**
+(`fixtures/bin/{go,git,make}`), grep-based regression tests for
+`.github/workflows/release.yml` + `.github/workflows/goreleaser.yml`
++ the composite action at `.github/actions/build-release-tool/`,
+4 behavioural CLI flag validity tests (`cli-flag-validity.bats`,
+#960) that invoke the real gh / goreleaser / cosign tools, and 12
+release-PR carve-out tests for the `regen-schema-artifacts-check`
++ `ta-diff-check` Makefile targets (#957). Run
+`make test-release-scripts` for the current count.
 
 ## What is **not** covered
 
@@ -40,6 +45,18 @@ for `.github/workflows/release.yml` + the composite action at
   `cmd/release-tool/regression_named_test.go`.
 - `release.yml` text — covered by the dedicated grep-based suite at
   `tests/release-scripts/release-yml-grep.bats`.
+- CLI flag validity (gh / goreleaser / cosign) — covered by
+  `tests/release-scripts/cli-flag-validity.bats` (#960). PR-5 shipped
+  a fake fix because the regression test only grep'd release.yml for
+  the literal string `--json url --jq '.url'`; gh CLI silently
+  rejected the flag at v0.2.2 dispatch. The new file invokes the
+  actual CLIs and validates every flag in release.yml /
+  .goreleaser.yml against the tool's `--help` output. CI's
+  `Test - Release Scripts` job installs goreleaser + cosign at the
+  same SHA-pinned versions goreleaser.yml uses, so the harness
+  exercises the real surface.
+- Makefile carve-out for release PR heads — covered by
+  `tests/release-scripts/check-static-release-pr-tolerant.bats`.
 
 ## Running locally
 

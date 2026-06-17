@@ -233,11 +233,12 @@ Every issue follows this sequence. Do not skip steps.
 - [ ] **#607** docs: complete Prometheus reference implementation in capstone and docs (tested, drop-in).
 - [ ] **#608** docs: add failure-mode matrix per output (destination down/slow, auth fail, disk full, TLS expired).
 - [ ] **#609** docs: document file output logrotate coexistence behaviour and recommendation.
-- [ ] **#610** ci: publish ghcr.io/axonops/audit-gen OCI image via GoReleaser.
+- [x] **#610** ci: publish ghcr.io/axonops/audit-gen OCI image via GoReleaser. _(reverted in #953 — see entry below)_
+- [ ] **#953** chore: remove docker publishing — `audit-gen` is a `go install` binary; no container image. _(reverts #610)_
 - [x] **#611** feat: standalone outputs.yaml validator for pre-deploy CI gate.
 - [ ] **#612** feat: publish Grafana dashboard JSON as release artefacts.
 
-**Sequencing:** #602 is the foundational doc — cross-linked from many others; start early. #607 and #612 coordinate with existing #435 (capstone Prometheus + Grafana). #610 depends on #482/#516 (Cosign signing) and #513 (release refactor).
+**Sequencing:** #602 is the foundational doc — cross-linked from many others; start early. #607 and #612 coordinate with existing #435 (capstone Prometheus + Grafana). #610 was reverted in #953 (v0.2.3) — the docker stack added a recurring tax on every release dispatch and `go install` is the canonical install surface for the audit-gen CLI.
 
 ---
 

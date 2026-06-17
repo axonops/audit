@@ -106,6 +106,27 @@ contributor-facing view of this invariant is documented in
 [release-yml]: ../.github/workflows/release.yml
 [update-deps-sh]: ../scripts/release/update-deps.sh
 
+### Post-release auto-tidy (#959)
+
+After `tag-all` publishes the v* tags, every sub-module's go.sum
+gains entries that did not exist before — `proxy.golang.org` can
+now resolve `github.com/axonops/audit vX.Y.Z` (which the
+release-prep PR's go.mod files pinned) and `go mod tidy` will
+write the corresponding checksum lines. Without intervention,
+main's Hygiene `tidy-check` job fails IMMEDIATELY post-release and
+every fix PR has to be admin-merged until a maintainer hand-tidies
+and pushes a commit. v0.2.2 was the case study: PRs #948–#955 all
+failed Hygiene's tidy-check on a post-release main.
+
+The `post-release-tidy` job in `release.yml` runs `make tidy` on
+main after `invariants` passes, App-signs the diff via the same
+`release-tool commit-pinned-deps` path the release-prep PR uses
+(the existing allowlist covers `go.mod` + `go.sum`, which is
+exactly the post-tidy diff surface), and opens an auto-merge PR
+titled `chore: post-release go.sum refresh (vX.Y.Z)`. If `make
+tidy` produces no diff (e.g. a release that only bumps an
+already-published module), the job exits 0 with a log.
+
 ### v0.x Stability Contract
 
 This library is pre-release (`v0.x`). The Go module system treats v0 the same
@@ -141,14 +162,15 @@ If a release contains a serious bug, the correct response is:
 
 ## Verify a Release with Cosign
 
-Every release publishes two artifacts alongside the usual binaries
-and `checksums.txt`:
+Every release publishes one signature bundle alongside the usual
+binaries and `checksums.txt`:
 
-- `checksums.txt.sig` — Sigstore-keyless signature of the checksum
-  file.
-- `checksums.txt.pem` — short-lived X.509 certificate issued by
-  Fulcio, binding the signature to the GitHub Actions identity that
-  produced this release.
+- `checksums.txt.bundle` — single-file Sigstore bundle containing
+  the keyless signature, the short-lived Fulcio X.509 certificate
+  binding it to the GitHub Actions identity that produced this
+  release, and the Rekor transparency-log entry. Replaces the
+  split `checksums.txt.sig` + `checksums.txt.pem` layout that
+  predates #958.
 
 The signing flow uses Sigstore [keyless OIDC] — there is no
 long-lived private key. Each release identity is the workflow file
@@ -159,20 +181,19 @@ signature is recorded in the public Rekor transparency log.
 
 ### Required tools
 
-- [`cosign`](https://docs.sigstore.dev/cosign/installation/) ≥ v2.5
-  — earlier versions do not support the
-  `--certificate-github-workflow-repository` flag used below for
-  defence-in-depth identity verification.
+- [`cosign`](https://docs.sigstore.dev/cosign/installation/) ≥ v2.6
+  — the bundle-format `--bundle` flag is the v2.6 default. Earlier
+  cosign releases require additional flags and are not supported
+  by this verifier recipe.
 
 ### Verify the checksum file
 
-Download `checksums.txt`, `checksums.txt.sig`, and `checksums.txt.pem`
-from the release page, then run:
+Download `checksums.txt` and `checksums.txt.bundle` from the release
+page, then run:
 
 ```bash
 cosign verify-blob \
-  --certificate checksums.txt.pem \
-  --signature checksums.txt.sig \
+  --bundle checksums.txt.bundle \
   --certificate-identity-regexp '^https://github\.com/axonops/audit/\.github/workflows/release\.yml@refs/tags/v.+$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-github-workflow-repository axonops/audit \
@@ -219,9 +240,9 @@ downloading the rest. The `Verified OK` line from `cosign` plus an
 
 - **`Verified OK` not printed.** The signature does not verify
   against the published certificate — consumers MUST NOT use the
-  artifact. Possible causes: wrong file pair (downloading `.sig`
-  from one release with `checksums.txt` from another), corrupted
-  download, or active tampering. Re-download from
+  artifact. Possible causes: wrong file pair (downloading
+  `.bundle` from one release with `checksums.txt` from another),
+  corrupted download, or active tampering. Re-download from
   `https://github.com/axonops/audit/releases` over HTTPS and retry.
 - **Identity-regex mismatch.** The certificate identity does not
   match the anchored regex above. This is the strongest red flag
@@ -246,13 +267,11 @@ gate in any CI system. Minimal GitHub Actions example:
     VERSION=v1.0.0
     URL="https://github.com/axonops/audit/releases/download/${VERSION}"
     curl -fsSLO "${URL}/checksums.txt"
-    curl -fsSLO "${URL}/checksums.txt.sig"
-    curl -fsSLO "${URL}/checksums.txt.pem"
+    curl -fsSLO "${URL}/checksums.txt.bundle"
     curl -fsSLO "${URL}/audit-gen_${VERSION#v}_linux_amd64.tar.gz"
 
     cosign verify-blob \
-      --certificate checksums.txt.pem \
-      --signature checksums.txt.sig \
+      --bundle checksums.txt.bundle \
       --certificate-identity-regexp '^https://github\.com/axonops/audit/\.github/workflows/release\.yml@refs/tags/v.+$' \
       --certificate-oidc-issuer https://token.actions.githubusercontent.com \
       --certificate-github-workflow-repository axonops/audit \
@@ -263,23 +282,6 @@ gate in any CI system. Minimal GitHub Actions example:
 
 Pin `cosign` to a specific version via
 `sigstore/cosign-installer@<sha>` in the workflow.
-
-### Verifying the audit-gen container image (#610)
-
-Each tagged release also publishes a multi-arch OCI image at
-`ghcr.io/axonops/audit-gen` with three tags (`vX.Y.Z`, `vX.Y`,
-`latest`). Image manifests are signed under the same Sigstore
-keyless identity as `checksums.txt`:
-
-```bash
-cosign verify \
-  --certificate-identity 'https://github.com/axonops/audit/.github/workflows/release.yml@refs/tags/v1.0.0' \
-  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
-  ghcr.io/axonops/audit-gen:v1.0.0
-```
-
-See [docs/code-generation.md § Container Image](code-generation.md#container-image)
-for usage and CI-pipeline guidance.
 
 ### Composition with build provenance
 
@@ -544,6 +546,81 @@ configuration in the UI before tagging the release.
 
 ## For Maintainers: Cutting a Release
 
+### Preflight tidy (#967)
+
+Every `workflow_dispatch` of `release.yml` starts with a
+`preflight-tidy` job that runs `make tidy` on the dispatched main
+ref BEFORE the CI Gate runs, then absorbs any benign go.sum drift
+into an App-signed auto-merge PR. This mirrors `post-release-tidy`
+(#959/#966) on the PRE-side of the release flow, closing the
+chicken-and-egg gap where the very first release after a
+non-tidy-state cannot self-heal.
+
+**Why it exists.** v0.2.3's dispatch (run 27325930898) failed at
+the CI Gate's Hygiene job because main's `go.sum` carried v0.2.2's
+post-tag drift. `make tidy` produced a diff, `tidy-check` failed,
+the whole CI Gate cascaded into failure, and tag-all never ran.
+#966's `post-release-tidy` was meant to prevent this AFTER each
+release, but it only takes effect once it has been merged AND
+run — and run-1 is v0.2.3 itself, which couldn't reach tag-all.
+#967 closes that gap.
+
+**What the job does.**
+
+1. Mints a release-bot App token; checks out main.
+2. Runs `make tidy` against every published module.
+3. Invokes `release-tool preflight-tidy-check` to enforce 6
+   NON-NEGOTIABLE safety gates against the resulting diff. The
+   subcommand is typed Go (`cmd/release-tool/cmd_preflight_tidy_check.go`)
+   — bash + jq + gh-CLI for release-critical work was retired by
+   #929 and a regression to inline bash would have re-opened the
+   v0.2.1 cascade class.
+4. On no-diff, exits with `preflight-tidy: no drift to absorb` and
+   the rest of the release dispatch proceeds against main HEAD
+   unchanged.
+5. On a clean diff, App-signs the commit via
+   `release-tool commit-pinned-deps` (existing allowlist already
+   covers go.mod + go.sum), opens an auto-merge PR titled
+   `chore: preflight-tidy go.sum refresh (vX.Y.Z)`, polls until
+   the PR merges, then continues with the release dispatch.
+
+**The 6 safety gates.**
+
+| # | Gate | Failure exit string |
+|---|------|---------------------|
+| 1 | go.mod changes are classified — indirect-only adjustments pass; direct require changes or directive (`module`/`go`/`toolchain`/`replace`) changes reject (#973) | `preflight-tidy: go.mod direct require modified — aborting` / `preflight-tidy: go.mod module/go/toolchain/replace directive modified — aborting` |
+| 2 | _Retired in #975 — go.sum deletions reflect the local require graph (orphan pruning when an indirect is removed). The supply-chain threat manifests through ADDED entries, which gate 4 defends._ | — |
+| 3 | For `axonops/audit/*` added lines, the module path must be in publishedModules AND the version must equal the last-released version. Third-party transitive lines pass and are validated by gate 4 (#976 relaxation) | `preflight-tidy: unrelated checksum lines — aborting` |
+| 4 | sum.golang.org transparency-log cross-check on every (module, version) | `preflight-tidy: sum.golang.org disagrees — aborting` (mismatch) / `preflight-tidy: sum.golang.org timeout or 5xx — aborting` (transient) |
+| 5 | Diff committed via auto-merge PR, never direct push | (orchestrated in workflow; `preflight-tidy: PR auto-merge refused — aborting` on a merge refusal) |
+| 6 | `inputs.skip_preflight_tidy=true` escape hatch | `preflight-tidy: skipped via skip_preflight_tidy input` |
+
+A successful no-drift run emits `preflight-tidy: no drift to
+absorb`; a successful drift-absorbed run emits
+`preflight-tidy: PR opened`. Every emit goes to both stdout AND
+`$GITHUB_STEP_SUMMARY` so operators can audit the dispatch trail.
+
+**`inputs.skip_preflight_tidy` escape hatch.**
+
+The workflow_dispatch input bypasses the preflight-tidy gate
+entirely. Set it ONLY when:
+
+- An independent investigation has confirmed the go.sum drift is
+  benign AND
+- sum.golang.org is known to be unreachable (verified via an
+  alternate channel — not just "the gate failed and we want to
+  ship").
+
+**NEVER** set the flag in response to a `gate 4` disagreement.
+A `sum.golang.org disagrees` message means the proxy is returning
+a hash the transparency log does not have — that is a supply-chain
+anomaly to investigate, not bypass.
+
+A bypass is logged as a `::warning::` workflow annotation AND
+emits a GFM `> [!CAUTION]` admonition to the run summary
+containing the actor login + timestamp. Bypassing leaves an
+auditable trail; do not use it casually.
+
 ### Release Workflow Overview
 
 Two GitHub Actions workflows participate in releases. The primary workflow
@@ -569,6 +646,17 @@ The two triggers serve different purposes:
   remaining modules **idempotently** (skipping tags that already exist at
   the same SHA, aborting on SHA mismatch), and runs GoReleaser. It does
   NOT open a release PR. See "Release recovery playbook" below.
+
+  **Self-contained since #956.** Before #956, the push:tag path reached
+  `tag-all` successfully but the downstream `goreleaser`, `verify`, and
+  `invariants` jobs silently skipped because their implicit "all needs
+  must succeed" gate treated the (legitimately skipped) `update-deps-pr`
+  + `wait-for-pr-merge` jobs as not-yet-success. v0.2.2's push:tag run
+  27181087721 hit exactly this — recovery created the tags but left the
+  GitHub Release page empty until the `goreleaser.yml` manual rerun was
+  dispatched. The three downstream jobs now carry explicit
+  `if: always() && needs.X.result == 'success' && ...` gates over their
+  direct upstreams, so push:tag is a real recovery path.
 
 The `release.yml` workflow uses the `axonops-audit-release-bot` GitHub App for
 every write operation; it does not consume a personal access token.
@@ -1175,6 +1263,43 @@ guards (`fmt-check`, `tidy-check`, `check-todos`, `check-replace`,
 `bench-baseline-check`) in a `||`-guarded loop so every failure
 surfaces on a single push rather than aborting on the first. Developers
 running `make check-static` locally see the same one-shot summary.
+
+### Release-PR carve-outs in `check-static` (#957)
+
+Two `check-static` targets — `regen-schema-artifacts-check` and
+`ta-diff-check` — shell out to `go run ./cmd/audit-gen`, which has
+to resolve every published sub-module from `go.mod`. On a release
+PR, the `update-deps.sh` step pins every cross-module `go.mod` to
+the not-yet-tagged target version (`tag-all` runs AFTER the PR
+merges), so the resolution fails with
+`unknown revision splunk/vX.Y.Z` and CI cannot pass without
+admin-bypass.
+
+Both targets carve out the release-PR head ref via the
+`GITHUB_HEAD_REF` env var: if the value matches
+`release/v<semver>`, the target prints a `skipping on release PR
+head ref ...` line and exits 0. Outside that match — including
+when the variable is unset (local development, push events,
+workflow_dispatch on a non-PR ref) — the targets run the full
+check. The neighbouring `SKIP_TIDY_CHECK=1` carve-out described
+above uses the same pattern. The carve-outs are tested by
+[`tests/release-scripts/check-static-release-pr-tolerant.bats`][bats-carve-out];
+removing them MUST be paired with restoring the upstream blocker
+they paper over.
+
+The release-PR carve-out is structurally safe: neither artefact's
+input depends on the cross-module `go.mod` pins. The framework
+schema + CEF template are produced from
+`internal/schemagen/framework_only_taxonomy.yaml` + audit-gen
+output; the reference TA is produced from
+`internal/schemagen/reference_ta_taxonomy.yaml` + audit-gen
+output. Neither input is mutated by a release PR, so a stale
+artefact cannot land via the release path. The post-merge
+`invariants` job in [`release.yml`][release-yml] re-runs the same
+`check-static` against the tagged commit, which is the
+authoritative gate.
+
+[bats-carve-out]: ../tests/release-scripts/check-static-release-pr-tolerant.bats
 
 The CI setup ceremony (Go install, workspace init, optional tool
 install) lives in `.github/actions/setup-audit/` as a composite

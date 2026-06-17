@@ -6,6 +6,217 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Cosign signature artefact is now a single bundle file (#958).**
+  The release signature recipe migrates from the split
+  `checksums.txt.sig` + `checksums.txt.pem` layout to the cosign
+  v2.6 bundle format (`checksums.txt.bundle`). The new verifier
+  recipe is:
+
+  ```bash
+  cosign verify-blob \
+    --bundle checksums.txt.bundle \
+    --certificate-identity-regexp '^https://github\.com/axonops/audit/\.github/workflows/release\.yml@refs/tags/v.+$' \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+    --certificate-github-workflow-repository axonops/audit \
+    checksums.txt
+  ```
+
+  Requires cosign v2.6+ (the bundle-format flag is the v2.6
+  default). Consumers using cosign v2.5 must upgrade. The
+  `goreleaser.yml` and `release.yml` `cosign-installer` v2.5.3
+  pins added by #950/#953 are removed in the same change.
+  `docs/releasing.md` "Verify a Release with Cosign" rewrites the
+  recipe end-to-end.
+
+### Removed
+
+- **`ghcr.io/axonops/audit-gen` OCI image publishing (#953).** The
+  multi-arch container image added in #610 is no longer published.
+  `audit-gen` is a developer-facing CLI tool whose canonical
+  install path is the Go module proxy
+  (`go install github.com/axonops/audit/cmd/audit-gen@vX.Y.Z`) or
+  the per-release binary tarball at
+  <https://github.com/axonops/audit/releases>. Shipping a docker
+  image added a recurring release tax (login step, cosign-installer
+  flag drift, `.Tag` template ambiguity vs annotated tags, GHCR
+  org-package permission chase) and was not pulling its weight —
+  the v0.2.2 dispatch was blocked across attempts 5–7 on it. The
+  `dockers:` / `docker_manifests:` / `docker_signs:` stanzas, the
+  `cmd/audit-gen/Dockerfile`, and the workflow docker-login + buildx
+  + qemu steps are all removed. The release tarball + checksum +
+  cosign signature + build-provenance attestation paths are
+  unchanged.
+
+### Fixed
+
+- **#957 release-PR-tolerant carve-out regex now matches series
+  branches (#983).** The release-tool creates `release/v<MAJOR>.<MINOR>.x`
+  series branches (literal `x` patch component), but #957's
+  regex `^release/v[0-9]+\.[0-9]+\.[0-9]+` required three integers
+  and missed this shape. Every release-prep PR's Hygiene check
+  failed `regen-schema-artifacts-check` / `ta-diff-check` and
+  required admin-merge. v0.2.4's release-prep PR (#982) hit this
+  exact failure mid-dispatch. The relaxed regex
+  `^release/v[0-9]+\.[0-9]+(\.[0-9]+|\.x)` matches both shapes.
+  New `test_*_skips_on_release_series_head_ref` bats anchors for
+  both Makefile targets.
+- **Root `go.mod` is now rewritten by the release `update-deps.sh`
+  script (#984).** Previously the script skipped the core module
+  (`scripts/release/update-deps.sh:53` carried
+  `[[ "$dir" == "." ]] && continue` under a wrong "core has no
+  axonops/audit require directives" comment). In reality the root
+  module requires 7 published sub-modules directly plus 2 indirect.
+  v0.2.4 release shipped Go-module tags successfully but goreleaser
+  refused to build the GitHub Release artifacts + cosign bundle
+  because `make check-release-invariants` correctly flagged the
+  stale `v0.1.11` / `v0.0.0-pseudo` references that survived the
+  release-prep PR. The fix removes the `.` skip — root is now
+  rewritten the same way every other published module is. 7 new
+  bats tests in `tests/release-scripts/update-deps.bats` lock the
+  contract for the 5 supported require shapes (block-form,
+  pseudo-version, indirect suffix, single-line, mixed indentation)
+  plus a no-op regression anchor plus the latent `/go.mod` go.sum
+  sibling-line bug devops surfaced during the #984 review.
+- **`preflight-tidy-check` gate 3 narrowed to `axonops/audit/*` (#976).**
+  v0.2.4's third-attempt dispatch would fail because tidy
+  legitimately adds transitive go.sum entries for non-axonops
+  modules (`axonops/syncmap`, `golang.org/x/crypto`) that v0.2.2's
+  go.mod pulls in. Gate 3 was rejecting them as "unrelated
+  checksum lines". The relaxed rule only enforces the version
+  constraint on lines in our `github.com/axonops/audit/*`
+  namespace; third-party transitives pass through and are
+  validated by gate 4 (sum.golang.org cross-check). The original
+  threat (namespace squatter like `github.com/evil/audit`) is
+  still caught — the defending gate shifts from 3 to 4.
+- **`preflight-tidy-check` gate 2 retired (#975).** Gate 2 rejected
+  ANY go.sum deletion, intended to defend against a maintainer-
+  added orphan being silently pruned. In practice `make tidy`'s
+  deletions are 100% reflective of the local require graph (an
+  indirect being removed in #973's relaxation takes its checksums
+  with it), and the actual supply-chain threat — proxy tampering
+  with hash values — manifests through ADDED entries that gate 4
+  defends. v0.2.4's second-attempt dispatch would have failed
+  here (`kr/text` orphan removal). The gate is removed; the
+  `preflight-tidy: go.sum lines deleted — aborting` error string
+  and `hasGoSumDeletions` helper are retired. New
+  `TestPreflightTidyCheck_GoSumDeletionsAllowed` test pins the
+  regression.
+- **`preflight-tidy-check` gate 1 now allows indirect-only go.mod
+  changes (#973).** v0.2.4's first dispatch (run 27370455797) failed
+  because tidy adjusted `// indirect` requires across 11 sub-module
+  `go.mod` files (transitive deps shifting after v0.2.2 — adding
+  `axonops/syncmap`, `golang.org/x/crypto`; removing `kr/text`).
+  These are routine Go-toolchain housekeeping, not engineering
+  changes, so gate 1 was over-rejecting them. The gate now classifies
+  every go.mod diff and rejects ONLY direct-require changes or
+  changes to `module` / `go` / `toolchain` / `replace` / `retract` /
+  `exclude` directives. The single `preflight-tidy: go.mod modified
+  — aborting` error string is replaced by two more-specific strings:
+  `preflight-tidy: go.mod direct require modified — aborting` and
+  `preflight-tidy: go.mod module/go/toolchain/replace directive
+  modified — aborting`. 7 new table-driven Go tests pin the
+  classification logic.
+- **Bump `preflight-tidy-check --max-diff-bytes` default from 8 KiB
+  to 64 KiB (#971).** v0.2.3's first dispatch (run 27361600829)
+  failed at `preflight-tidy` because the diff-size cap was tuned
+  per-module (~8 KiB) but the actual `make tidy` diff against 15
+  sub-module go.sum files is ~10–12 KiB. The error string is also
+  changed from `preflight-tidy: diff exceeds 8 KiB cap — aborting`
+  to `preflight-tidy: diff exceeds size cap — aborting` so future
+  cap bumps don't require lockstep edits to the AC + bats anchors.
+- **Fix release dispatch failing on post-tag go.sum drift via preflight-tidy job (#967).**
+  v0.2.3's dispatch (`workflow_dispatch` run 27325930898) failed at
+  the CI Gate's Hygiene job because main's `go.sum` carried v0.2.2's
+  post-tag-publication drift residue. #959/#966 added a
+  `post-release-tidy` job to absorb that drift AFTER each release —
+  but #966 only takes effect once it has been merged AND run, and
+  run-1 is v0.2.3 itself, which couldn't reach `tag-all` without a
+  clean Hygiene. Chicken-and-egg.
+  The new `preflight-tidy` job in `release.yml` runs BEFORE the CI
+  Gate, mirrors #966 on the PRE-side of the release flow, and
+  enforces 6 NON-NEGOTIABLE safety gates against the resulting
+  diff via a new `release-tool preflight-tidy-check` subcommand
+  (typed Go — bash + jq + gh-CLI for release-critical work was
+  retired by #929 and a regression to inline bash would have
+  re-opened the v0.2.1 cascade class). Gates: (1) go.sum-only, no
+  go.mod changes; (2) additions only, no deletions; (3) lines
+  reference only published modules at the last-released version;
+  (4) every (module, version) cross-checked against sum.golang.org's
+  transparency log; (5) PR-only commits (never direct-push); (6)
+  `inputs.skip_preflight_tidy` operator escape hatch with mandatory
+  `::warning::` + GFM CAUTION audit trail. See `docs/releasing.md`
+  § "Preflight tidy (#967)" for the failure-mode table and the
+  operator playbook. Tested by 9 named bats assertions
+  (`tests/release-scripts/release-yml-grep.bats`) and 19 table-
+  driven Go tests (`cmd/release-tool/cmd_preflight_tidy_check_test.go`
+  + `cmd/release-tool/internal/sumdb/lookup_test.go`).
+- **`regen-schema-artifacts-check` + `ta-diff-check` release-PR
+  head-ref carve-out (#957).** Both Makefile targets shell out to
+  `go run ./cmd/audit-gen`, which has to resolve every published
+  sub-module from `go.mod`. On a release PR the cross-module pins
+  point at yet-to-be-tagged versions (`tag-all` runs after PR
+  merge), causing the targets to fail with
+  `unknown revision splunk/vX.Y.Z` and blocking the release PR
+  without admin-bypass. v0.2.2 had to be admin-merged with required-
+  check bypass for exactly this reason — the first crack that
+  triggered the lightweight-tag downstream cascade. The targets now
+  detect `GITHUB_HEAD_REF` matching `release/v<semver>` and skip
+  with a logged reason; non-release PRs still run the full check.
+  Mirrors the existing tidy-check release-PR carve-out described in
+  `docs/releasing.md` § "Unified single-tag release flow". Tested by
+  `tests/release-scripts/check-static-release-pr-tolerant.bats`
+  (12 named tests). v0.2.3's release PR can auto-merge without
+  admin bypass.
+- **`push: tags: v*` recovery path is now self-contained (#956).** The
+  `goreleaser`, `verify`, and `invariants` jobs in
+  `.github/workflows/release.yml` now carry explicit
+  `if: always() && needs.X.result == 'success' && ...` gates over
+  their direct upstreams. Previously, the implicit "all needs must
+  succeed" gate treated the (legitimately skipped) workflow_dispatch-
+  only `update-deps-pr` + `wait-for-pr-merge` jobs as not-yet-success
+  on the push:tag path, causing the entire downstream chain to silently
+  skip. v0.2.2's push:tag run 27181087721 hit exactly this — recovery
+  created the tags but left the GitHub Release page empty until the
+  `goreleaser.yml` manual rerun was dispatched. Tested by three new
+  `tests/release-scripts/release-yml-grep.bats` assertions
+  (`test_release_yml_goreleaser_uses_if_always`,
+  `..._verify_uses_if_always`, `..._invariants_uses_if_always`).
+- **Goreleaser tag-detection bandage stack collapsed (#958).**
+  Three workarounds were stacked on `goreleaser.yml` during v0.2.2's
+  push:tag rescue: a `--skip=before` flag bypassing
+  `make check-release-invariants` (#948), a cosign-installer
+  v2.5.3 pin (#950), and the `--no-new-bundle-format` flag on
+  cosign sign-blob (#949). The structural fix —
+  `GORELEASER_CURRENT_TAG: ${{ inputs.version }}` (#951) —
+  already addresses the root cause (goreleaser's `{{ .Tag }}` /
+  `{{ .Version }}` no longer try to resolve via `git describe`
+  and so cannot pick the wrong annotated tag). The other three
+  workarounds are now removed and the cosign signs: stanza is
+  migrated to the v2.6 bundle format described above. Three new
+  `tests/release-scripts/goreleaser-yml-grep.bats` assertions
+  (`test_goreleaser_no_skip_before`,
+  `test_goreleaser_no_cosign_release_pin`,
+  `test_goreleaser_signs_uses_bundle_format`,
+  `test_releasing_docs_uses_bundle_verifier_recipe`) pin the
+  collapse against future regression.
+- **Post-release auto-tidy job (#959).** After `tag-all` publishes
+  the v* tags, every sub-module's `go.sum` gains entries for the
+  just-published version (the proxy now resolves them). Without
+  intervention, main's Hygiene `tidy-check` fails immediately
+  post-release and every fix PR must be admin-merged until a
+  maintainer hand-tidies and pushes a commit. v0.2.2 illustrated
+  the failure mode end-to-end — PRs #948-#955 all failed Hygiene's
+  tidy-check on a post-release main. A new `post-release-tidy` job
+  in `release.yml` runs `make tidy` after `invariants`, App-signs
+  any diff via `release-tool commit-pinned-deps` (the existing
+  allowlist already covers go.mod + go.sum), and opens an
+  auto-merge PR titled `chore: post-release go.sum refresh
+  (vX.Y.Z)`. No-diff case exits cleanly. Tested by the new
+  `tests/release-scripts/release-yml-grep.bats`
+  `test_release_yml_post_release_tidy_step_exists` assertion.
+
 ## [0.2.2] - 2026-06-08
 
 ### Added

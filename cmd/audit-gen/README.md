@@ -60,16 +60,6 @@ Pre-built binaries for `linux/{amd64,arm64}`, `darwin/{amd64,arm64}`,
 and `windows/amd64` are attached to every release tag at
 <https://github.com/axonops/audit/releases>.
 
-An OCI image is published to GitHub Container Registry on every
-release (multi-arch manifest: amd64 + arm64):
-
-```bash
-docker run --rm -v "$PWD:/src" ghcr.io/axonops/audit-gen:latest \
-    -input /src/taxonomy.yaml \
-    -output /src/audit_generated.go \
-    -package mypackage
-```
-
 Requires Go 1.26+ when installing from source.
 
 ## Usage
@@ -203,7 +193,7 @@ Or pin a specific binary version into a job:
 
 ```yaml
 - name: Install audit-gen
-  run: go install github.com/axonops/audit/cmd/audit-gen@v0.2.0
+  run: go install github.com/axonops/audit/cmd/audit-gen@v0.2.3
 
 - name: Regenerate
   run: audit-gen -input taxonomy.yaml -output audit_generated.go -package mypackage
@@ -214,12 +204,12 @@ Or pin a specific binary version into a job:
 Maintainers triggering proxy.golang.org indexing after a release tag:
 
 ```bash
-make publish-trigger VERSION=v0.2.0
+make publish-trigger VERSION=v0.2.3
 ```
 
 This walks the published modules — including
 `github.com/axonops/audit/cmd/audit-gen` — and forces a proxy
-fetch so `go install …@v0.2.0` resolves immediately.
+fetch so `go install …@v0.2.3` resolves immediately.
 
 ## See also
 

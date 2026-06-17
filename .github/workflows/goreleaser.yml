@@ -101,97 +101,54 @@ jobs:
       - name: Set up go.work
         run: make workspace
 
-      # PR-12 (#952) fix: the v0.2.2 5th dispatch (27216652832) failed
-      # at the docker push step with "unauthorized: unauthenticated:
-      # User cannot be authenticated with the token provided".
-      # GoReleaser's `dockers:` push needs the runner's local docker
-      # CLI to be logged into ghcr.io BEFORE goreleaser runs — there
-      # is no docker-login surface inside goreleaser-action's config.
-      # docker/login-action is the standard pattern. Uses
-      # ${{ github.actor }} + the auto-provisioned GITHUB_TOKEN
-      # scoped via the workflow's `packages: write` permission.
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       # Sigstore keyless signing (#516). Installs cosign for the
-      # GoReleaser `signs:` stanza. Pinned to v4.1.1 commit SHA.
-      #
-      # PR-10 (#950) fix: cosign-installer's default is "latest", which
-      # currently pulls cosign ≥ v2.6. That release made
-      # --new-bundle-format the silent default — --output-signature
-      # and --output-certificate are warned-and-ignored, and cosign
-      # tries to write a combined .bundle to the path passed via
-      # --bundle (which we don't pass), so it fails with
-      # "create bundle file: open : no such file or directory".
-      # The v0.2.2 dispatch (runs 27194413670 + 27196997175) failed
-      # exactly here. Pin to v2.5.3 — the last v2.5 release — so
-      # --output-signature / --output-certificate continue to write
-      # the .sig / .pem layout that docs/releasing.md's verifier
-      # recipe depends on. v0.2.3 will migrate to the bundle format
-      # + update the verifier docs as a proper fix.
+      # GoReleaser `signs:` stanza. Action pinned by SHA per
+      # repository action-pin policy; the cosign binary itself is
+      # left at the action default (latest stable). The cosign-v2.5.3
+      # pin previously added by #950 is removed in #958 — the
+      # `signs:` stanza now uses cosign v2.6's bundle format
+      # natively, so a forward-compatible cosign binary is required.
       - name: Install cosign
         uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
-        with:
-          cosign-release: 'v2.5.3'
 
       - name: Run GoReleaser
         id: goreleaser
-        # --skip=before added for v0.2.2 (#948): the MAJOR-6 before-hook
-        # added in PR-7 (#943) calls `make check-release-invariants
-        # VERSION={{ .Tag }}`. GoReleaser's `{{ .Tag }}` resolves via
-        # `git describe --tags`, which prefers ANNOTATED tags over
-        # lightweight ones. The v0.2.2 dispatch pushed `v0.2.2` as a
-        # lightweight tag via REST (because release.yml's wait-for-pr-
-        # merge timed out and the tag had to be pushed manually outside
-        # the App-signed release-tool flow). Tag-all then created
-        # annotated `file/v0.2.2`, `syslog/v0.2.2`, ..., `webhook/v0.2.2`
-        # at the same SHA — and `git describe` picks the lexicographically
-        # last annotated one (`webhook/v0.2.2`), which the Makefile
-        # rejects as not matching any module's expected version.
-        #
-        # The proper fix (use $GITHUB_REF_NAME, or replace the
-        # lightweight v0.2.2 tag with an annotated one) is tracked
-        # for v0.2.3. For v0.2.2 we --skip=before — the invariant was
-        # already enforced when PR #947 (the inter-module deps PR)
-        # merged into main, so skipping the hook here is safe.
+        # #958: the v0.2.2 before-hook skip flag is gone.
+        # GORELEASER_CURRENT_TAG below overrides the
+        # `git describe --tags` auto-detection so the
+        # check-release-invariants before-hook now receives the
+        # dispatched version verbatim. The v0.2.2 flag was a
+        # lightweight-tag bandage; the env var is the structural
+        # fix.
         uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7.2.1
         with:
           version: 'v2.15.4'
-          # --skip=docker --skip=docker-manifests skips the docker
-          # image build + push for v0.2.2. The audit-gen container
-          # image isn't needed (consumers `go install` the binary),
-          # and shipping it blocked v0.2.2 on a GHCR org-package-
-          # creation permission chase. #953 tracks removing the
-          # docker stanzas from .goreleaser.yml entirely; this flag
-          # is the in-place workaround until that PR lands. The
-          # cosign signs: stanza for checksums.txt is NOT skipped —
-          # consumers' verifier recipe in docs/releasing.md still
-          # needs the .sig + .pem files.
-          args: release --clean --skip=validate --skip=before --skip=docker
+          # --skip=validate matches the historical release flow. The cosign
+          # signs: stanza for checksums.txt is NOT skipped — consumers'
+          # verifier recipe in docs/releasing.md depends on the .bundle
+          # file. Docker stanzas were removed in #953; the before-hook
+          # bandage was removed in #958.
+          args: release --clean --skip=validate
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # PR-11 (#951): GoReleaser's `{{ .Tag }}` and `{{ .Version }}`
           # templates resolve via `git describe --tags`, which prefers
-          # ANNOTATED tags over lightweight ones. v0.2.2 was pushed as
-          # lightweight (release-tool flow timed out at wait-for-pr-
-          # merge, tag had to be created manually via REST), then
-          # tag-all created annotated `file/v0.2.2`, ...,
-          # `webhook/v0.2.2`. git describe picks the lexicographically
-          # last annotated one (`webhook/v0.2.2`) — `{{ .Version }}`
-          # becomes `webhook/v0.2.2`, and docker image-template builds
-          # like `ghcr.io/axonops/audit-gen:{{ .Version }}-amd64`
-          # produce `ghcr.io/...:webhook/v0.2.2-amd64`, an invalid
-          # docker reference (slash in the tag).
+          # ANNOTATED tags over lightweight ones. When the release-tool
+          # flow times out at wait-for-pr-merge and the version tag is
+          # pushed manually as lightweight, tag-all then creates annotated
+          # `file/vX.Y.Z`, ..., `webhook/vX.Y.Z` at the same SHA — and
+          # `git describe` picks the lexicographically last annotated one
+          # (`webhook/vX.Y.Z`), making `{{ .Version }}` resolve to
+          # `webhook/vX.Y.Z` (slash in the template output). The release
+          # checksum filename + the GitHub release name end up malformed.
           #
           # GORELEASER_CURRENT_TAG is goreleaser's documented escape
           # hatch — overrides the auto-detection. Set it to the
           # workflow_dispatch `version` input so .Tag / .Version
-          # resolve to v0.2.2 / 0.2.2 regardless of what
-          # `git describe` would pick.
+          # resolve to the dispatched value regardless of what
+          # `git describe` would pick. This is the canonical
+          # structural fix for the lightweight-vs-annotated tag
+          # ambiguity (#958 retired the surrounding bandages).
           GORELEASER_CURRENT_TAG: ${{ inputs.version }}
 
       - name: Attest release artifacts
@@ -205,5 +162,4 @@ jobs:
             dist/*.tar.gz
             dist/*.zip
             dist/checksums.txt
-            dist/checksums.txt.sig
-            dist/checksums.txt.pem
+            dist/checksums.txt.bundle

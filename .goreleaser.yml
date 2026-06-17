@@ -110,8 +110,9 @@ checksum:
 # We sign checksums.txt — not every binary — because the checksum
 # file is the cryptographic root of trust for every artifact in the
 # release: a verified checksums.txt plus `sha256sum -c` extends the
-# guarantee to every binary listed inside it. One signature pair
-# (.sig + .pem) protects the entire release manifest.
+# guarantee to every binary listed inside it. One bundle file
+# (.bundle) protects the entire release manifest (#958 — cosign v2.6
+# bundle format; the pre-#958 .sig + .pem split is retired).
 #
 # Identity: https://github.com/axonops/audit/.github/workflows/release.yml@refs/tags/<tag>
 # Issuer:   https://token.actions.githubusercontent.com
@@ -127,7 +128,13 @@ signs:
   - cmd: cosign
     artifacts: checksum
     output: true
-    certificate: '${artifact}.pem'
+    # New bundle-format signature artefact (#958). Replaces the
+    # split sig + cert layout that PR #949 / #950 papered over with
+    # cosign-v2.5 flag overrides + a cosign-installer pin. The
+    # bundle is the cosign-v2.6 default; bundle format is forward-
+    # compatible and the verifier recipe in docs/releasing.md is
+    # updated accordingly.
+    signature: '${artifact}.bundle'
     args:
       # Note: an explicit --oidc-issuer was previously passed here.
       # Modern cosign (≥ v2.5) treats explicit service URLs as
@@ -139,21 +146,12 @@ signs:
       # forward-compatible.
       - sign-blob
       - '--yes'
-      # PR-9 (#949): cosign ≥ v2.6 made --new-bundle-format the
-      # default, which silently IGNORES --output-signature and
-      # --output-certificate (they print deprecation warnings) and
-      # writes a combined .bundle file at the path passed via
-      # --bundle. With no --bundle path supplied, cosign attempts
-      # `open ""` and fails with "create bundle file: open : no such
-      # file or directory". The v0.2.2 dispatch (run 27194413670)
-      # hit this. We keep the legacy split sig+cert layout — every
-      # consumer's `cosign verify-blob --signature checksums.txt.sig
-      # --certificate checksums.txt.pem` recipe in docs/releasing.md
-      # depends on those two files existing. --no-new-bundle-format
-      # restores cosign v2.5 behaviour.
-      - '--no-new-bundle-format'
-      - '--output-certificate=${certificate}'
-      - '--output-signature=${signature}'
+      # Single bundle output (#958). cosign-v2.6's new bundle format
+      # writes the signature + certificate + Rekor entry into one
+      # file via the --bundle flag. GoReleaser's `${signature}`
+      # template resolves to the path declared in the `signature:`
+      # field above (`${artifact}.bundle`).
+      - '--bundle=${signature}'
       - '${artifact}'
 
 release:
@@ -178,69 +176,13 @@ release:
     - glob: deploy/schemas/audit-event.framework.schema.json
     - glob: deploy/schemas/audit-event.framework.cef.template
 
-# audit-gen OCI image (#610).
-#
-# Two per-architecture builds (amd64, arm64) feed into a single
-# multi-arch manifest published as ghcr.io/axonops/audit-gen with
-# three tags: full version (e.g. v1.0.0), short major.minor
-# (e.g. v1.0), and `latest`. Each manifest is Cosign-signed via
-# the same keyless OIDC identity as the release-tarball checksum
-# (#516), so consumers verify with the documented identity in
-# docs/releasing.md.
-#
-# The Dockerfile at cmd/audit-gen/Dockerfile copies the
-# pre-compiled audit-gen binary from the GoReleaser build output
-# (audit-gen build entry above), so the image binary is
-# byte-identical to the binary in the GitHub-release tarball.
-dockers:
-  - id: audit-gen-amd64
-    ids: [audit-gen]
-    goos: linux
-    goarch: amd64
-    image_templates:
-      - "ghcr.io/axonops/audit-gen:{{ .Version }}-amd64"
-    use: buildx
-    dockerfile: cmd/audit-gen/Dockerfile
-    build_flag_templates:
-      - "--platform=linux/amd64"
-      - "--label=org.opencontainers.image.created={{ .Date }}"
-      - "--label=org.opencontainers.image.version={{ .Version }}"
-      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
-  - id: audit-gen-arm64
-    ids: [audit-gen]
-    goos: linux
-    goarch: arm64
-    image_templates:
-      - "ghcr.io/axonops/audit-gen:{{ .Version }}-arm64"
-    use: buildx
-    dockerfile: cmd/audit-gen/Dockerfile
-    build_flag_templates:
-      - "--platform=linux/arm64"
-      - "--label=org.opencontainers.image.created={{ .Date }}"
-      - "--label=org.opencontainers.image.version={{ .Version }}"
-      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
-
-docker_manifests:
-  - name_template: "ghcr.io/axonops/audit-gen:{{ .Version }}"
-    image_templates:
-      - "ghcr.io/axonops/audit-gen:{{ .Version }}-amd64"
-      - "ghcr.io/axonops/audit-gen:{{ .Version }}-arm64"
-  - name_template: "ghcr.io/axonops/audit-gen:{{ .Major }}.{{ .Minor }}"
-    image_templates:
-      - "ghcr.io/axonops/audit-gen:{{ .Version }}-amd64"
-      - "ghcr.io/axonops/audit-gen:{{ .Version }}-arm64"
-  - name_template: "ghcr.io/axonops/audit-gen:latest"
-    image_templates:
-      - "ghcr.io/axonops/audit-gen:{{ .Version }}-amd64"
-      - "ghcr.io/axonops/audit-gen:{{ .Version }}-arm64"
-
-# Cosign-sign every published manifest under the same keyless
-# OIDC identity as the checksum signature.
-docker_signs:
-  - cmd: cosign
-    artifacts: manifests
-    output: true
-    args:
-      - sign
-      - --yes
-      - "${artifact}@${digest}"
+# audit-gen OCI image publishing removed in #953. The library is the
+# primary distribution surface (Go module proxy); audit-gen is a
+# developer CLI tool consumers install via
+# `go install github.com/axonops/audit/cmd/audit-gen@vX.Y.Z`. The
+# docker image stanza was originally #610 but blocked the v0.2.2
+# release on an org GHCR package-creation permission chase and added
+# a recurring tax (login step, cosign-installer flag drift, .Tag
+# template ambiguity vs annotated tags). docs/releasing.md no longer
+# documents a docker recipe; consumers use the Go module + binary
+# tarball + cosign checksum verification path.

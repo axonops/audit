@@ -3,10 +3,12 @@
 [![Go Reference][godoc-badge]][godoc]
 
 `release-tool` is the audit project's internal CLI that drives the
-release workflow. It replaces the two failing bash + jq + gh-CLI
-helpers that produced 7 cascading bugs during v0.2.1 (#900–#916).
-PR-6 (#929) deleted those bash scripts; this Go binary is the
-canonical App-signed commit + tag path.
+release workflow. It replaces the bash + jq + gh-CLI helpers that
+produced 7 cascading bugs during v0.2.1 (#900–#916). PR-6 (#929)
+deleted those bash scripts; this Go binary is the canonical
+App-signed commit + tag path. #967 added a third subcommand
+(`preflight-tidy-check`) that validates `make tidy` output against
+6 safety gates before the release dispatch absorbs the diff.
 
 > **Module path**: `github.com/axonops/audit/cmd/release-tool`
 > **Status**: pre-release (v0.x) — internal binary, NOT published to consumers
@@ -124,6 +126,34 @@ On success the tag OBJECT SHA is written to stdout. With `--dry-run`,
 the two proposed payloads (`POST /git/tags` and `POST /git/refs`)
 are written to stdout instead and no API mutation occurs.
 
+#### `preflight-tidy-check`
+
+Validates the working tree's uncommitted diff (presumed to be the
+output of a fresh `make tidy`) against six NON-NEGOTIABLE safety
+gates before the release.yml `preflight-tidy` job (#967) commits
+it. Each gate failure exits with an exact operator-facing error
+string declared in #967 AC #4 (see `docs/releasing.md` § "Preflight
+tidy (#967)" for the failure-mode table).
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--last-released-version` | yes | The last released `vX.Y.Z` — gates 3 + 4 root their checks here |
+| `--published-modules` | yes | Comma-separated list of published module paths (derived from `make print-publish-modules`) |
+| `--workdir` | no | Path to the git working directory (default: `.`) |
+| `--max-diff-bytes` | no | Hard cap on diff size (default: `8192`) |
+| `--sumdb-endpoint` | no | Override the sum.golang.org endpoint (test-only) |
+| `--sumdb-timeout` | no | Per-module sumdb lookup timeout (default: `30s`) |
+| `--skip-sumdb-cross-check` | no | DANGER — skip gate 4 (test-only) |
+
+Exit codes (additions to the project-wide table above):
+- `0` — every gate passed; stdout lists `<module> <version>` per validated pair.
+- `3` — a safety gate aborted; stdout + stderr carry the AC #4 string.
+- `4` — no diff (idempotent no-op).
+
+The subcommand performs the sum.golang.org transparency-log lookup
+directly via HTTPS — `GOPROXY` is not consulted on the verification
+path. See `internal/sumdb/` for the signed-note threat model.
+
 ## Internal packages
 
 | Package | Purpose |
@@ -132,6 +162,7 @@ are written to stdout instead and no API mutation occurs.
 | `internal/gitstatus` | NUL-safe `git status -z` parser (regression for #907). |
 | `internal/allowlist` | go.mod / go.sum allowlist enforcement (rejects vendor/, .github/, symlinks). |
 | `internal/ghclient` | Typed wrapper around 3 GitHub REST endpoints with slog instrumentation. |
+| `internal/sumdb` | Direct sum.golang.org transparency-log lookup for `preflight-tidy-check` gate 4 (#967). |
 
 Each package is unit-tested against `httptest.Server` fixtures and is
 covered ≥ 85 %.

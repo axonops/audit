@@ -20,7 +20,7 @@
 
 This library is **pre-release (v0.x)**. The API may change between
 minor versions until v1.0.0. Pin your dependency version
-(e.g. `go get github.com/axonops/audit@v0.2.0`) and read the
+(e.g. `go get github.com/axonops/audit@v0.2.5`) and read the
 CHANGELOG before upgrading.
 
 ---

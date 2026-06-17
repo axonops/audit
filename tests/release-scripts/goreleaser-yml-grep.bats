@@ -139,3 +139,61 @@ setup() {
     [ "$status" -ne 0 ]
     [[ "$output" =~ "Release invariants failed" ]]
 }
+
+# --- #958 — collapse goreleaser tag-detection bandages ---
+
+@test "test_goreleaser_no_skip_before" {
+    # #958: --skip=before was a v0.2.2-only bandage for the
+    # lightweight-tag template issue. GORELEASER_CURRENT_TAG (kept
+    # below) is the structural fix; --skip=before would re-mask
+    # invariant-hook regressions if reintroduced.
+    ! grep -qF -- '--skip=before' "$GORELEASER_YML"
+}
+
+@test "test_goreleaser_no_cosign_release_pin" {
+    # #958: the cosign-installer pin to v2.5.3 was added by #950 to
+    # paper over cosign v2.6's --new-bundle-format default. The
+    # signs: stanza now uses the bundle format natively, so the
+    # pin is no longer needed. Re-introducing it would fight the
+    # new sign-blob recipe.
+    ! grep -qE "cosign-release:[[:space:]]*['\"]?v2\.5" "$GORELEASER_YML"
+}
+
+@test "test_goreleaser_keeps_current_tag_env" {
+    # #958: GORELEASER_CURRENT_TAG (#951) is THE actual fix for the
+    # lightweight-tag template issue and MUST stay even after the
+    # other bandages collapse.
+    grep -qF 'GORELEASER_CURRENT_TAG: ${{ inputs.version }}' "$GORELEASER_YML"
+}
+
+@test "test_goreleaser_signs_uses_bundle_format" {
+    # #958: signs: stanza migrated to cosign v2.6 bundle format —
+    # one --bundle flag instead of --output-signature +
+    # --output-certificate (+ --no-new-bundle-format). Verifies the
+    # forward-compatible single-file layout.
+    grep -qE -- "--bundle=\\$\\{signature\\}" "$GORELEASER_CONFIG"
+    grep -qF "signature: '\${artifact}.bundle'" "$GORELEASER_CONFIG"
+    # Negatives: the split-file flags MUST NOT reappear.
+    ! grep -qF -- '--output-signature=${signature}' "$GORELEASER_CONFIG"
+    ! grep -qF -- '--output-certificate=${certificate}' "$GORELEASER_CONFIG"
+    ! grep -qF -- '--no-new-bundle-format' "$GORELEASER_CONFIG"
+}
+
+@test "test_releasing_docs_uses_bundle_verifier_recipe" {
+    # #958: docs/releasing.md verifier recipe migrated to the
+    # cosign --bundle flag (single .bundle file). The split
+    # --signature + --certificate flags MUST NOT reappear in any
+    # cosign verify-blob example.
+    DOCS="${REPO_ROOT}/docs/releasing.md"
+    [ -f "$DOCS" ] || skip "docs/releasing.md not present"
+    # Positive: every verify-blob recipe uses --bundle.
+    grep -qF -- '--bundle checksums.txt.bundle' "$DOCS"
+    # Negative: split-flag form is gone from runnable examples.
+    # Grep for the literal flag inside `cosign verify-blob` shell
+    # blocks. The narrative prose at the top of "Verify a Release
+    # with Cosign" legitimately references the old .sig/.pem file
+    # names — `--signature ` would only appear as a CLI argument
+    # in a code block.
+    ! grep -qF -- '--signature checksums.txt.sig' "$DOCS"
+    ! grep -qF -- '--certificate checksums.txt.pem' "$DOCS"
+}

@@ -16,11 +16,12 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/goleak v1.3.0
-	golang.org/x/crypto v0.52.0
+	golang.org/x/crypto v0.53.0
 	pgregory.net/rapid v1.3.0
 )
 
 require (
+	github.com/axonops/audit/iouring v0.0.0-20260504172742-a7311e23b1c6 // indirect
 	github.com/axonops/audit/secrets v0.2.5 // indirect
 	github.com/axonops/audit/secrets/vault v0.2.5 // indirect
 	github.com/axonops/srslog v1.0.1 // indirect
